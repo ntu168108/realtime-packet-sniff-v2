@@ -1,0 +1,36 @@
+# Sudoers rule for sniff-web.service — restricted to systemctl + 6 known services.
+# Each (action, service) pair is explicit so adding a new service requires deliberate update.
+Cmnd_Alias SNIFF_WEB_SYSTEMCTL = \
+    /usr/bin/systemctl start kafka, \
+    /usr/bin/systemctl stop kafka, \
+    /usr/bin/systemctl restart kafka, \
+    /usr/bin/systemctl enable kafka, \
+    /usr/bin/systemctl disable kafka, \
+    /usr/bin/systemctl start sniff-producer, \
+    /usr/bin/systemctl stop sniff-producer, \
+    /usr/bin/systemctl restart sniff-producer, \
+    /usr/bin/systemctl enable sniff-producer, \
+    /usr/bin/systemctl disable sniff-producer, \
+    /usr/bin/systemctl start ec-consumer, \
+    /usr/bin/systemctl stop ec-consumer, \
+    /usr/bin/systemctl restart ec-consumer, \
+    /usr/bin/systemctl enable ec-consumer, \
+    /usr/bin/systemctl disable ec-consumer, \
+    /usr/bin/systemctl start clickhouse-server, \
+    /usr/bin/systemctl stop clickhouse-server, \
+    /usr/bin/systemctl restart clickhouse-server, \
+    /usr/bin/systemctl enable clickhouse-server, \
+    /usr/bin/systemctl disable clickhouse-server, \
+    /usr/bin/systemctl start grafana-server, \
+    /usr/bin/systemctl stop grafana-server, \
+    /usr/bin/systemctl restart grafana-server, \
+    /usr/bin/systemctl enable grafana-server, \
+    /usr/bin/systemctl disable grafana-server, \
+    /usr/bin/systemctl start sniff-web, \
+    /usr/bin/systemctl stop sniff-web, \
+    /usr/bin/systemctl restart sniff-web, \
+    /usr/bin/systemctl enable sniff-web, \
+    /usr/bin/systemctl disable sniff-web
+
+tu ALL=(root) NOPASSWD: SNIFF_WEB_SYSTEMCTL
+Defaults!SNIFF_WEB_SYSTEMCTL !requiretty

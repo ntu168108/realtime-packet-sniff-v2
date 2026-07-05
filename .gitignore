@@ -1,0 +1,85 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# SNIFF specific
+sniff_data/
+*.pcap
+*.log
+*.pid
+
+# Systemd
+sniff.service.local
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+.hypothesis/
+.tox/
+
+# Distribution
+*.tar.gz
+*.zip
+
+# --- Public-repo hygiene ---
+# Internal generation specs (not for publication)
+README_SPEC.md
+REFACTOR_SPEC.md
+
+# Generated classifier feature CSVs (keep committed samples only)
+Extraction-and-classification/CSV/CSV_Full_feature/*
+!Extraction-and-classification/CSV/CSV_Full_feature/sample_*
+
+# Trained model artifact is large/regenerable; keep baseline only
+*.pcap.summary.json
+
+# SDD scratch (skill working files, regenerated per session)
+.superpowers/
+
+# Web GUI artifacts
+sniff-web/web/dist/
+sniff-web/web/node_modules/
+/var/lib/sniff-web/
+sniff-web/web/instance/
+*.tsbuildinfo
+
+# Generated config with real bcrypt hash + JWT secret — never commit
+config.yaml

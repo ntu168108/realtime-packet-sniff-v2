@@ -1,0 +1,46 @@
+{
+  "class_name": "DoS",
+  "display_name": "DoS (Denial of Service)",
+  "description": "Tấn công từ chối dịch vụ — SYN/UDP/ICMP flood, HTTP flood. Đặc trưng: sttl cao (spoofed), dttl=0, ct_state_ttl >= 1, sload/rate rất cao, response ngắn hoặc không có.",
+  "keep_columns": [
+    "src_mac", "dst_mac", "srcip", "dstip",
+    "sport", "dport", "ltime",
+    "sttl", "ct_state_ttl", "dttl",
+    "sbytes", "dbytes", "smean", "dmean", "rate",
+    "dur", "sloss", "dloss",
+    "tcprtt", "synack", "ackdat",
+    "djit",
+    "ct_srv_dst", "ct_dst_src_ltm", "ct_dst_sport_ltm",
+    "ct_src_dport_ltm", "ct_srv_src",
+    "proto", "state", "service"
+  ],
+  "categorical_mode": {
+    "proto": ["tcp", "udp", "icmp"],
+    "state": ["INT", "REQ", "CON", "S0", "RSTRH", "ECO"],
+    "service": ["-", "http", "dns"]
+  },
+  "signature": {
+    "decisive": [
+      { "feature": "sttl",         "op": ">=", "threshold": 142.5,         "attack_median": 254.0,        "normal_median": 31.0 },
+      { "feature": "dttl",         "op": "<=", "threshold": 14.5,          "attack_median": 0.0,          "normal_median": 29.0 },
+      { "feature": "ct_state_ttl", "op": ">=", "threshold": 1.0,           "attack_median": 2.0,          "normal_median": 0.0 },
+      { "feature": "swin",         "op": "<=", "threshold": 127.5,         "attack_median": 0.0,          "normal_median": 255.0 },
+      { "feature": "sload",        "op": ">=", "threshold": 44724137.4688,  "attack_median": 88888888.0,   "normal_median": 559386.9375 },
+      { "feature": "rate",         "op": ">=", "threshold": 112841.6957,    "attack_median": 222222.2222,  "normal_median": 3461.1692 }
+    ],
+    "support": [
+      { "feature": "sloss",            "op": "<=", "threshold": 2.0,   "attack_median": 0.0,   "normal_median": 4.0 },
+      { "feature": "dpkts",            "op": "<=", "threshold": 9.0,   "attack_median": 0.0,   "normal_median": 18.0 },
+      { "feature": "sbytes",           "op": "<=", "threshold": 942.0, "attack_median": 200.0, "normal_median": 1684.0 },
+      { "feature": "smean",            "op": ">=", "threshold": 86.5,  "attack_median": 100.0, "normal_median": 73.0 },
+      { "feature": "ct_flw_http_mthd", "op": ">=", "threshold": 0.5,   "attack_median": 1.0,   "normal_median": 0.0 },
+      { "feature": "dloss",            "op": "<=", "threshold": 2.5,   "attack_median": 0.0,   "normal_median": 5.0 }
+    ]
+  },
+  "scoring": {
+    "weight_decisive": 10,
+    "weight_support": 3,
+    "min_decisive_required": 2,
+    "threshold": 30
+  }
+}

@@ -1,0 +1,44 @@
+[Unit]
+Description=SNIFF Web GUI (FastAPI)
+After=network.target
+Documentation=https://github.com/ntu168108/realtime-packet-sniff
+
+[Service]
+Type=simple
+# User is patched by install_web.sh to the real user that invoked sudo.
+# Default to `tu` for legacy installs — overridden on first install.
+User=tu
+# WorkingDirectory MUST be the directory containing web_server.py.
+# Running `uvicorn sniff-web.web_server:app` from any other directory will
+# FAIL because Python refuses to import modules whose name contains a
+# hyphen (`-`). Therefore ExecStart uses `web_server:app` directly.
+WorkingDirectory=/opt/realtime-packet-sniff/sniff-web
+# PYTHONPATH is set by install_web.sh from `python3 -c "import site; ..."`
+# so the service picks up the same site-packages the installer used.
+# The second path (the repo root) is appended by install_web.sh so
+# that `from core.capture import ...` resolves inside the worker.
+# Default fallback is /opt/realtime-packet-sniff for legacy installs.
+Environment=PYTHONPATH=/home/tu/.local/lib/python3.12/site-packages:/opt/realtime-packet-sniff
+ExecStart=/usr/bin/python3 -m uvicorn web_server:app --host 0.0.0.0 --port 8000 --workers 1
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=sniff-web
+# NoNewPrivileges=false because sniff-web invokes `sudo systemctl ...` to
+# manage peer services (kafka/clickhouse/grafana/...). The sudoers rule
+# under /etc/sudoers.d/sniff-web is locked down to a fixed Cmnd_Alias
+# (5 actions × 6 services = 30 commands), so the security exposure is
+# minimal. Turning NoNewPrivileges=true back on would break service
+# management from the Web UI — see README troubleshooting.
+NoNewPrivileges=false
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+# v0.4.0: /capture page rewrites config.yaml when the operator changes
+# the capture interface, so the repo root must be writable from the service.
+# install_web.sh replaces the path below with the actual repo location.
+ReadWritePaths=/var/lib/sniff-web /var/log/sniff-web /opt/realtime-packet-sniff
+
+[Install]
+WantedBy=multi-user.target

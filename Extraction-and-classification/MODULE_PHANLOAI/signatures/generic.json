@@ -1,0 +1,42 @@
+{
+  "class_name": "Generic",
+  "display_name": "Generic",
+  "description": "Generic attack (chuẩn UNSW-NB15: KHÔNG phải BruteForce). Đặc trưng: sttl rất cao (spoofed), dttl=0, dur=0 (one-shot), sload/rate cực cao.",
+  "keep_columns": [
+    "src_mac", "dst_mac", "srcip", "dstip",
+    "sport", "dport", "ltime",
+    "sttl", "ct_state_ttl", "dttl",
+    "sbytes", "dbytes", "smean", "dmean", "rate",
+    "dur", "sloss", "dloss",
+    "sload", "dload",
+    "ct_srv_src", "ct_srv_dst", "ct_dst_src_ltm",
+    "ct_src_ltm", "ct_dst_ltm",
+    "proto", "state", "service"
+  ],
+  "categorical_mode": {
+    "proto": ["tcp", "udp"],
+    "state": ["INT", "REQ", "CON"],
+    "service": ["-", "http", "dns", "ftp", "smtp"]
+  },
+  "signature": {
+    "decisive": [
+      { "feature": "sttl",  "op": ">=", "threshold": 200.0, "attack_median": 254.0, "normal_median": 31.0 },
+      { "feature": "dttl",  "op": "<=", "threshold": 14.5,  "attack_median": 0.0,   "normal_median": 29.0 },
+      { "feature": "sload", "op": ">=", "threshold": 30000000.0, "attack_median": 57000000.0, "normal_median": 559386.9 },
+      { "feature": "rate",  "op": ">=", "threshold": 100000.0,   "attack_median": 222222.2,  "normal_median": 3461.2 }
+    ],
+    "support": [
+      { "feature": "dur",    "op": "<=", "threshold": 1.0,    "attack_median": 0.0,    "normal_median": 0.02 },
+      { "feature": "dbytes", "op": "<=", "threshold": 100.0,  "attack_median": 0.0,    "normal_median": 2478.0 },
+      { "feature": "dpkts",  "op": "<=", "threshold": 5.0,    "attack_median": 0.0,    "normal_median": 18.0 },
+      { "feature": "sbytes", "op": "<=", "threshold": 500.0,  "attack_median": 114.0,  "normal_median": 1684.0 },
+      { "feature": "sloss",  "op": "<=", "threshold": 2.0,    "attack_median": 0.0,    "normal_median": 4.0 }
+    ]
+  },
+  "scoring": {
+    "weight_decisive": 10,
+    "weight_support": 3,
+    "min_decisive_required": 2,
+    "threshold": 30
+  }
+}

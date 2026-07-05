@@ -1,0 +1,15 @@
+[Unit]
+Description=SNIFF Kafka producer
+After=network.target kafka.service
+Requires=kafka.service
+
+[Service]
+User=root
+WorkingDirectory=/home/tu/realtime-packet-sniff
+Environment=PYTHONPATH=/home/tu/.local/lib/python3.12/site-packages
+ExecStart=/usr/bin/python3 -m integration.run_producer
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

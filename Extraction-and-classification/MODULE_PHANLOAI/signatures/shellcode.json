@@ -1,0 +1,42 @@
+{
+  "class_name": "Shellcode",
+  "display_name": "Shellcode",
+  "description": "Shellcode attack — chèn mã thực thi vào payload. Đặc trưng: sttl cao (spoofed), dttl=0, sbytes cao (payload chứa shellcode), state INT.",
+  "keep_columns": [
+    "src_mac", "dst_mac", "srcip", "dstip",
+    "sport", "dport", "ltime",
+    "sttl", "ct_state_ttl", "dttl",
+    "sbytes", "dbytes", "smean", "dmean",
+    "dur", "spkts", "dpkts",
+    "sloss", "dloss",
+    "tcprtt", "synack",
+    "ct_srv_src", "ct_srv_dst", "ct_dst_src_ltm",
+    "trans_depth", "response_body_len",
+    "proto", "state", "service"
+  ],
+  "categorical_mode": {
+    "proto": ["tcp", "udp"],
+    "state": ["INT", "REQ"],
+    "service": ["-", "http", "ftp"]
+  },
+  "signature": {
+    "decisive": [
+      { "feature": "sttl",  "op": ">=", "threshold": 200.0, "attack_median": 254.0, "normal_median": 31.0 },
+      { "feature": "dttl",  "op": "<=", "threshold": 14.5,  "attack_median": 0.0,   "normal_median": 29.0 },
+      { "feature": "sbytes","op": ">=", "threshold": 500.0, "attack_median": 800.0, "normal_median": 1684.0 },
+      { "feature": "ct_state_ttl", "op": ">=", "threshold": 1.0, "attack_median": 2.0, "normal_median": 0.0 }
+    ],
+    "support": [
+      { "feature": "response_body_len", "op": "<=", "threshold": 100.0, "attack_median": 0.0, "normal_median": 0.0 },
+      { "feature": "dbytes",            "op": "<=", "threshold": 100.0, "attack_median": 0.0, "normal_median": 2478.0 },
+      { "feature": "dpkts",             "op": "<=", "threshold": 5.0,    "attack_median": 0.0, "normal_median": 18.0 },
+      { "feature": "sloss",             "op": "<=", "threshold": 2.0,    "attack_median": 0.0, "normal_median": 4.0 }
+    ]
+  },
+  "scoring": {
+    "weight_decisive": 10,
+    "weight_support": 3,
+    "min_decisive_required": 2,
+    "threshold": 30
+  }
+}

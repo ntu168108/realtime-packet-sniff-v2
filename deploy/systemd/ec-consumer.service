@@ -1,0 +1,15 @@
+[Unit]
+Description=SNIFF EC Consumer (Extract + Classify)
+After=network.target kafka.service clickhouse-server.service
+Requires=kafka.service
+
+[Service]
+User=tu
+WorkingDirectory=/home/tu/realtime-packet-sniff
+Environment=PYTHONPATH=/home/tu/.local/lib/python3.12/site-packages
+ExecStart=/usr/bin/python3 -m integration.ec_consumer
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

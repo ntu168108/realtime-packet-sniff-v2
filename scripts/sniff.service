@@ -1,0 +1,30 @@
+[Unit]
+Description=SNIFF - Network Packet Capture Service
+Documentation=https://github.com/ntu168108/realtime-packet-sniff
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/sniff
+ExecStart=/usr/bin/python3 /opt/sniff/sniff.py -i eth0
+ExecStop=/usr/bin/python3 /opt/sniff/sniff.py --stop
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/sniff/sniff_data /tmp /var/log/sniff
+
+# Resource limits
+LimitNOFILE=65536
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

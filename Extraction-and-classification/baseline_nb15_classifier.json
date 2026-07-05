@@ -1,0 +1,3477 @@
+{
+  "meta": {
+    "name": "UNSW-NB15 Standard Classification Baseline",
+    "purpose": "Một baseline chuẩn DUY NHẤT (suy ra từ 100% dữ liệu thô UNSW-NB15) để nạp vào công cụ phân loại. Mỗi lớp có profile trung tâm + chữ ký phân biệt so với Normal.",
+    "source_data": "4 file UNSW-NB15_1..4.csv (toàn bộ 2540047 bản ghi), nhãn từ cột attack_cat",
+    "derivation": "Thống kê median/mean/p25/p75 tính trực tiếp trên toàn bộ dataset; chữ ký tự sinh theo độ tách biệt median so với Normal.",
+    "primary_statistic": "median (đặt ngưỡng), kèm mean/p25/p75 để biết phân tán & đuôi.",
+    "note_for_human": "Dùng 'profile' để hiểu hành vi từng lớp; dùng 'signature' (đã xếp theo độ phân biệt) để viết luật phân loại.",
+    "note_for_ai": "Mỗi signature row: {feature, op, threshold, attack_median, normal_median}. Áp dụng op so với threshold để cho điểm về lớp đó. Ưu tiên các row đầu (score cao). Kết hợp với categorical mode (proto/state/service).",
+    "raw_vs_training_naming": {
+      "smean": "smeansz (CSV thô) = smean (training-set / md)",
+      "dmean": "dmeansz = dmean",
+      "sinpkt": "Sintpkt = sinpkt",
+      "dinpkt": "Dintpkt = dinpkt",
+      "response_body_len": "res_bdy_len = response_body_len",
+      "rate": "KHÔNG có trong 49 cột CSV thô; chỉ có ở UNSW_NB15_training-set.csv. Ở đây tính dẫn xuất = (spkts+dpkts)/dur."
+    },
+    "important_warnings": [
+      "tu.md 'Generic=BruteForce' KHÔNG đúng với lớp Generic của UNSW-NB15 (xem reconciliation_with_md ở lớp Generic).",
+      "Các giá trị số trong bi.md (Reconnaissance/Analysis/Shellcode) phần lớn là MINH HỌA, lệch định lượng so với dữ liệu thật — baseline này thay bằng số thật.",
+      "Backdoors/Analysis/DoS/Shellcode có profile rất giống nhau (đều sttl=254, state=INT, dbytes=0) => khó tách bằng luật ngưỡng đơn thuần; nên dùng mô hình ML đa biến."
+    ],
+    "status": "PROVEN — định nghĩa lớp xác nhận bởi R1; số liệu là ground-truth từ 100% dataset (trùng khớp R3); sttl/ct_state_ttl xác nhận top-feature bởi R2/R5.",
+    "verdict_legend": {
+      "CONFIRMED": "md khớp dữ liệu thật + định nghĩa R1",
+      "DEF_CONFIRMED_values_corrected": "Định nghĩa md đúng theo R1, nhưng số liệu md là minh họa → baseline thay bằng số thật",
+      "DEF_CONFIRMED_behavior_not_in_flow": "Định nghĩa đúng nhưng hành vi md mô tả không hiện trong flow NB15",
+      "REFUTED_md": "Tài liệu R1 bác bỏ cách md gán lớp này",
+      "NOT_IN_MD": "Lớp không có trong 3 file md"
+    }
+  },
+  "class_distribution": {
+    "Normal": {
+      "count": 2218764,
+      "share_pct": 87.351
+    },
+    "Analysis": {
+      "count": 2677,
+      "share_pct": 0.105
+    },
+    "Backdoors": {
+      "count": 2329,
+      "share_pct": 0.092
+    },
+    "DoS": {
+      "count": 16353,
+      "share_pct": 0.644
+    },
+    "Exploits": {
+      "count": 44525,
+      "share_pct": 1.753
+    },
+    "Fuzzers": {
+      "count": 24246,
+      "share_pct": 0.955
+    },
+    "Generic": {
+      "count": 215481,
+      "share_pct": 8.483
+    },
+    "Reconnaissance": {
+      "count": 13987,
+      "share_pct": 0.551
+    },
+    "Shellcode": {
+      "count": 1511,
+      "share_pct": 0.059
+    },
+    "Worms": {
+      "count": 174,
+      "share_pct": 0.007
+    }
+  },
+  "feature_dictionary": {
+    "dur": {
+      "description": "Tổng thời gian flow (s)",
+      "type": "numeric",
+      "packet_location": "Flow record (ltime-stime)",
+      "raw_csv_name": "dur"
+    },
+    "sbytes": {
+      "description": "Bytes nguồn→đích",
+      "type": "numeric",
+      "packet_location": "Flow record",
+      "raw_csv_name": "sbytes"
+    },
+    "dbytes": {
+      "description": "Bytes đích→nguồn",
+      "type": "numeric",
+      "packet_location": "Flow record",
+      "raw_csv_name": "dbytes"
+    },
+    "sttl": {
+      "description": "TTL nguồn→đích",
+      "type": "numeric",
+      "packet_location": "IP header (byte 8)",
+      "raw_csv_name": "sttl"
+    },
+    "dttl": {
+      "description": "TTL đích→nguồn",
+      "type": "numeric",
+      "packet_location": "IP header (byte 8)",
+      "raw_csv_name": "dttl"
+    },
+    "sloss": {
+      "description": "Gói nguồn mất/truyền lại",
+      "type": "numeric",
+      "packet_location": "Flow record",
+      "raw_csv_name": "sloss"
+    },
+    "dloss": {
+      "description": "Gói đích mất/truyền lại",
+      "type": "numeric",
+      "packet_location": "Flow record",
+      "raw_csv_name": "dloss"
+    },
+    "sload": {
+      "description": "Tốc độ bit nguồn (bps)",
+      "type": "numeric",
+      "packet_location": "Flow record (sbytes*8/dur)",
+      "raw_csv_name": "Sload"
+    },
+    "dload": {
+      "description": "Tốc độ bit đích (bps)",
+      "type": "numeric",
+      "packet_location": "Flow record (dbytes*8/dur)",
+      "raw_csv_name": "Dload"
+    },
+    "spkts": {
+      "description": "Số gói nguồn→đích",
+      "type": "numeric",
+      "packet_location": "Flow record",
+      "raw_csv_name": "Spkts"
+    },
+    "dpkts": {
+      "description": "Số gói đích→nguồn",
+      "type": "numeric",
+      "packet_location": "Flow record",
+      "raw_csv_name": "Dpkts"
+    },
+    "swin": {
+      "description": "TCP window nguồn",
+      "type": "numeric",
+      "packet_location": "TCP header",
+      "raw_csv_name": "swin"
+    },
+    "smean": {
+      "description": "Kích thước gói TB nguồn",
+      "type": "numeric",
+      "packet_location": "Flow record",
+      "raw_csv_name": "smeansz"
+    },
+    "dmean": {
+      "description": "Kích thước gói TB đích",
+      "type": "numeric",
+      "packet_location": "Flow record",
+      "raw_csv_name": "dmeansz"
+    },
+    "trans_depth": {
+      "description": "Độ sâu pipeline HTTP",
+      "type": "numeric",
+      "packet_location": "App layer (HTTP)",
+      "raw_csv_name": "trans_depth"
+    },
+    "response_body_len": {
+      "description": "Kích thước body HTTP server trả về",
+      "type": "numeric",
+      "packet_location": "App layer (HTTP)",
+      "raw_csv_name": "res_bdy_len"
+    },
+    "sjit": {
+      "description": "Jitter nguồn (ms)",
+      "type": "numeric",
+      "packet_location": "Flow record",
+      "raw_csv_name": "Sjit"
+    },
+    "djit": {
+      "description": "Jitter đích (ms)",
+      "type": "numeric",
+      "packet_location": "Flow record",
+      "raw_csv_name": "Djit"
+    },
+    "sinpkt": {
+      "description": "Khoảng cách gói nguồn (ms)",
+      "type": "numeric",
+      "packet_location": "Flow record",
+      "raw_csv_name": "Sintpkt"
+    },
+    "dinpkt": {
+      "description": "Khoảng cách gói đích (ms)",
+      "type": "numeric",
+      "packet_location": "Flow record",
+      "raw_csv_name": "Dintpkt"
+    },
+    "tcprtt": {
+      "description": "RTT bắt tay TCP = synack+ackdat",
+      "type": "numeric",
+      "packet_location": "TCP timing",
+      "raw_csv_name": "tcprtt"
+    },
+    "synack": {
+      "description": "Thời gian SYN→SYN-ACK",
+      "type": "numeric",
+      "packet_location": "TCP timing",
+      "raw_csv_name": "synack"
+    },
+    "ackdat": {
+      "description": "Thời gian SYN-ACK→ACK",
+      "type": "numeric",
+      "packet_location": "TCP timing",
+      "raw_csv_name": "ackdat"
+    },
+    "is_sm_ips_ports": {
+      "description": "=1 nếu src IP:port == dst IP:port",
+      "type": "binary",
+      "packet_location": "Flow metadata",
+      "raw_csv_name": "is_sm_ips_ports"
+    },
+    "ct_state_ttl": {
+      "description": "Đếm theo (state, dải TTL)",
+      "type": "numeric",
+      "packet_location": "Flow metadata",
+      "raw_csv_name": "ct_state_ttl"
+    },
+    "ct_flw_http_mthd": {
+      "description": "Số flow có HTTP method (GET/POST)",
+      "type": "numeric",
+      "packet_location": "App layer",
+      "raw_csv_name": "ct_flw_http_mthd"
+    },
+    "is_ftp_login": {
+      "description": "=1 nếu login FTP có user/pass",
+      "type": "binary",
+      "packet_location": "App layer (FTP)",
+      "raw_csv_name": "is_ftp_login"
+    },
+    "ct_ftp_cmd": {
+      "description": "Số lệnh trong phiên FTP",
+      "type": "numeric",
+      "packet_location": "App layer (FTP)",
+      "raw_csv_name": "ct_ftp_cmd"
+    },
+    "ct_srv_src": {
+      "description": "#kết nối cùng (service, src) /100",
+      "type": "numeric",
+      "packet_location": "Flow metadata",
+      "raw_csv_name": "ct_srv_src"
+    },
+    "ct_srv_dst": {
+      "description": "#kết nối cùng (service, dst) /100",
+      "type": "numeric",
+      "packet_location": "Flow metadata",
+      "raw_csv_name": "ct_srv_dst"
+    },
+    "ct_dst_ltm": {
+      "description": "#kết nối cùng dst /100",
+      "type": "numeric",
+      "packet_location": "Flow metadata",
+      "raw_csv_name": "ct_dst_ltm"
+    },
+    "ct_src_ltm": {
+      "description": "#kết nối cùng src /100",
+      "type": "numeric",
+      "packet_location": "Flow metadata",
+      "raw_csv_name": "ct_src_ltm"
+    },
+    "ct_src_dport_ltm": {
+      "description": "#kết nối cùng (src, dport) /100",
+      "type": "numeric",
+      "packet_location": "Flow metadata",
+      "raw_csv_name": "ct_src_dport_ltm"
+    },
+    "ct_dst_sport_ltm": {
+      "description": "#kết nối cùng (dst, sport) /100",
+      "type": "numeric",
+      "packet_location": "Flow metadata",
+      "raw_csv_name": "ct_dst_sport_ltm"
+    },
+    "ct_dst_src_ltm": {
+      "description": "#kết nối cùng (src, dst) /100",
+      "type": "numeric",
+      "packet_location": "Flow metadata",
+      "raw_csv_name": "ct_dst_src_ltm"
+    },
+    "rate": {
+      "description": "Tốc độ gói = (spkts+dpkts)/dur [DẪN XUẤT, không có sẵn trong CSV thô]",
+      "type": "numeric",
+      "packet_location": "derived",
+      "raw_csv_name": "(derived)"
+    }
+  },
+  "normal_profile": {
+    "dur": {
+      "mean": 0.6484,
+      "median": 0.02,
+      "p25": 0.0011,
+      "p75": 0.2235
+    },
+    "sbytes": {
+      "mean": 4121.0882,
+      "median": 1684.0,
+      "p25": 264.0,
+      "p75": 3614.0
+    },
+    "dbytes": {
+      "mean": 41058.5192,
+      "median": 2478.0,
+      "p25": 178.0,
+      "p75": 17238.0
+    },
+    "sttl": {
+      "mean": 37.1007,
+      "median": 31.0,
+      "p25": 31.0,
+      "p75": 31.0
+    },
+    "dttl": {
+      "mean": 28.5664,
+      "median": 29.0,
+      "p25": 29.0,
+      "p75": 29.0
+    },
+    "sloss": {
+      "mean": 5.5347,
+      "median": 4.0,
+      "p25": 0.0,
+      "p75": 7.0
+    },
+    "dloss": {
+      "mean": 18.3938,
+      "median": 5.0,
+      "p25": 0.0,
+      "p75": 15.0
+    },
+    "sload": {
+      "mean": 28278455.806,
+      "median": 559386.9375,
+      "p25": 116453.2617,
+      "p75": 1453131.875
+    },
+    "dload": {
+      "mean": 2804085.9065,
+      "median": 656535.0,
+      "p25": 68732.9121,
+      "p75": 3696087.375
+    },
+    "spkts": {
+      "mean": 36.7978,
+      "median": 14.0,
+      "p25": 2.0,
+      "p75": 48.0
+    },
+    "dpkts": {
+      "mean": 48.0875,
+      "median": 18.0,
+      "p25": 2.0,
+      "p75": 46.0
+    },
+    "swin": {
+      "mean": 165.1351,
+      "median": 255.0,
+      "p25": 0.0,
+      "p75": 255.0
+    },
+    "smean": {
+      "mean": 128.0322,
+      "median": 73.0,
+      "p25": 62.0,
+      "p75": 132.0
+    },
+    "dmean": {
+      "mean": 311.4603,
+      "median": 103.0,
+      "p25": 80.0,
+      "p75": 565.0
+    },
+    "trans_depth": {
+      "mean": 0.0871,
+      "median": 0.0,
+      "p25": 0.0,
+      "p75": 0.0
+    },
+    "response_body_len": {
+      "mean": 4736.2714,
+      "median": 0.0,
+      "p25": 0.0,
+      "p75": 0.0
+    },
+    "sjit": {
+      "mean": 1454.166,
+      "median": 23.7903,
+      "p25": 0.0,
+      "p75": 460.1169
+    },
+    "djit": {
+      "mean": 801.2824,
+      "median": 15.3896,
+      "p25": 0.0,
+      "p75": 68.1807
+    },
+    "sinpkt": {
+      "mean": 213.452,
+      "median": 0.5525,
+      "p25": 0.011,
+      "p75": 8.474
+    },
+    "dinpkt": {
+      "mean": 84.6231,
+      "median": 0.5203,
+      "p25": 0.009,
+      "p75": 6.5827
+    },
+    "tcprtt": {
+      "mean": 0.0037,
+      "median": 0.0006,
+      "p25": 0.0,
+      "p75": 0.0007
+    },
+    "synack": {
+      "mean": 0.0021,
+      "median": 0.0005,
+      "p25": 0.0,
+      "p75": 0.0006
+    },
+    "ackdat": {
+      "mean": 0.0016,
+      "median": 0.0001,
+      "p25": 0.0,
+      "p75": 0.0001
+    },
+    "is_sm_ips_ports": {
+      "mean": 0.0019,
+      "median": 0.0,
+      "p25": 0.0,
+      "p75": 0.0
+    },
+    "ct_state_ttl": {
+      "mean": 0.034,
+      "median": 0.0,
+      "p25": 0.0,
+      "p75": 0.0
+    },
+    "ct_flw_http_mthd": {
+      "mean": 0.2225,
+      "median": 0.0,
+      "p25": 0.0,
+      "p75": 0.0
+    },
+    "is_ftp_login": {
+      "mean": 0.0387,
+      "median": 0.0,
+      "p25": 0.0,
+      "p75": 0.0
+    },
+    "ct_ftp_cmd": {
+      "mean": 0.0462,
+      "median": 0.0,
+      "p25": 0.0,
+      "p75": 0.0
+    },
+    "ct_srv_src": {
+      "mean": 7.6276,
+      "median": 5.0,
+      "p25": 2.0,
+      "p75": 9.0
+    },
+    "ct_srv_dst": {
+      "mean": 7.3972,
+      "median": 4.0,
+      "p25": 2.0,
+      "p75": 8.0
+    },
+    "ct_dst_ltm": {
+      "mean": 5.3848,
+      "median": 3.0,
+      "p25": 2.0,
+      "p75": 5.0
+    },
+    "ct_src_ltm": {
+      "mean": 5.8293,
+      "median": 4.0,
+      "p25": 2.0,
+      "p75": 6.0
+    },
+    "ct_src_dport_ltm": {
+      "mean": 3.3622,
+      "median": 1.0,
+      "p25": 1.0,
+      "p75": 2.0
+    },
+    "ct_dst_sport_ltm": {
+      "mean": 2.6081,
+      "median": 1.0,
+      "p25": 1.0,
+      "p75": 1.0
+    },
+    "ct_dst_src_ltm": {
+      "mean": 4.9612,
+      "median": 2.0,
+      "p25": 1.0,
+      "p75": 4.0
+    },
+    "rate": {
+      "mean": 53414.2125,
+      "median": 3461.1692,
+      "p25": 268.8107,
+      "p75": 4730.9284
+    }
+  },
+  "normal_categorical": {
+    "proto": {
+      "tcp": 64.8,
+      "udp": 34.6,
+      "arp": 0.5,
+      "ospf": 0.2
+    },
+    "state": {
+      "fin": 64.0,
+      "con": 25.2,
+      "int": 10.4,
+      "req": 0.4
+    },
+    "service": {
+      "-": 52.6,
+      "dns": 25.7,
+      "http": 8.4,
+      "ftp-data": 5.6
+    }
+  },
+  "classes": {
+    "Generic": {
+      "count": 215481,
+      "share_pct": 8.483,
+      "profile_numeric": {
+        "dur": {
+          "mean": 0.0533,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "sbytes": {
+          "mean": 356.962,
+          "median": 114.0,
+          "p25": 114.0,
+          "p75": 114.0
+        },
+        "dbytes": {
+          "mean": 1067.2194,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "sttl": {
+          "mean": 252.7323,
+          "median": 254.0,
+          "p25": 254.0,
+          "p75": 254.0
+        },
+        "dttl": {
+          "mean": 3.6939,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "sloss": {
+          "mean": 0.1188,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "dloss": {
+          "mean": 0.4234,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "sload": {
+          "mean": 99779153.061,
+          "median": 57000000.0,
+          "p25": 50666664.0,
+          "p75": 114000000.0
+        },
+        "dload": {
+          "mean": 2994.267,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "spkts": {
+          "mean": 2.4534,
+          "median": 2.0,
+          "p25": 2.0,
+          "p75": 2.0
+        },
+        "dpkts": {
+          "mean": 0.9377,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "swin": {
+          "mean": 3.6887,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "smean": {
+          "mean": 61.4523,
+          "median": 57.0,
+          "p25": 57.0,
+          "p75": 57.0
+        },
+        "dmean": {
+          "mean": 6.4926,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "trans_depth": {
+          "mean": 0.0073,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "response_body_len": {
+          "mean": 397.8077,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "sjit": {
+          "mean": 111.9637,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "djit": {
+          "mean": 29.4232,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "sinpkt": {
+          "mean": 2.499,
+          "median": 0.008,
+          "p25": 0.004,
+          "p75": 0.009
+        },
+        "dinpkt": {
+          "mean": 1.6326,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "tcprtt": {
+          "mean": 0.0018,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "synack": {
+          "mean": 0.0009,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ackdat": {
+          "mean": 0.0009,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "is_sm_ips_ports": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ct_state_ttl": {
+          "mean": 1.9857,
+          "median": 2.0,
+          "p25": 2.0,
+          "p75": 2.0
+        },
+        "ct_flw_http_mthd": {
+          "mean": 0.2955,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "is_ftp_login": {
+          "mean": 0.0005,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ct_ftp_cmd": {
+          "mean": 0.0005,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ct_srv_src": {
+          "mean": 28.0242,
+          "median": 29.0,
+          "p25": 20.0,
+          "p75": 36.0
+        },
+        "ct_srv_dst": {
+          "mean": 28.0093,
+          "median": 29.0,
+          "p25": 20.0,
+          "p75": 36.0
+        },
+        "ct_dst_ltm": {
+          "mean": 19.385,
+          "median": 18.0,
+          "p25": 12.0,
+          "p75": 25.0
+        },
+        "ct_src_ltm": {
+          "mean": 19.6333,
+          "median": 18.0,
+          "p25": 13.0,
+          "p75": 25.0
+        },
+        "ct_src_dport_ltm": {
+          "mean": 19.2292,
+          "median": 17.0,
+          "p25": 12.0,
+          "p75": 24.0
+        },
+        "ct_dst_sport_ltm": {
+          "mean": 14.7179,
+          "median": 16.0,
+          "p25": 9.0,
+          "p75": 19.0
+        },
+        "ct_dst_src_ltm": {
+          "mean": 27.8974,
+          "median": 29.0,
+          "p25": 20.0,
+          "p75": 36.0
+        },
+        "rate": {
+          "mean": 426536.0924,
+          "median": 250000.0,
+          "p25": 222222.2222,
+          "p75": 500000.0
+        }
+      },
+      "categorical": {
+        "proto": {
+          "udp": 97.7,
+          "tcp": 1.4,
+          "unas": 0.3,
+          "ospf": 0.1
+        },
+        "state": {
+          "int": 98.5,
+          "fin": 1.4,
+          "con": 0.1,
+          "req": 0.0
+        },
+        "service": {
+          "dns": 97.4,
+          "-": 1.6,
+          "http": 0.8,
+          "smtp": 0.2
+        }
+      },
+      "signature": {
+        "decisive": [
+          {
+            "feature": "sttl",
+            "op": ">=",
+            "threshold": 142.5,
+            "attack_median": 254.0,
+            "normal_median": 31.0
+          },
+          {
+            "feature": "dttl",
+            "op": "<=",
+            "threshold": 14.5,
+            "attack_median": 0.0,
+            "normal_median": 29.0
+          },
+          {
+            "feature": "ct_dst_src_ltm",
+            "op": ">=",
+            "threshold": 15.5,
+            "attack_median": 29.0,
+            "normal_median": 2.0
+          },
+          {
+            "feature": "ct_dst_sport_ltm",
+            "op": ">=",
+            "threshold": 8.5,
+            "attack_median": 16.0,
+            "normal_median": 1.0
+          },
+          {
+            "feature": "ct_src_dport_ltm",
+            "op": ">=",
+            "threshold": 9.0,
+            "attack_median": 17.0,
+            "normal_median": 1.0
+          },
+          {
+            "feature": "ct_srv_dst",
+            "op": ">=",
+            "threshold": 16.5,
+            "attack_median": 29.0,
+            "normal_median": 4.0
+          },
+          {
+            "feature": "ct_state_ttl",
+            "op": ">=",
+            "threshold": 1.0,
+            "attack_median": 2.0,
+            "normal_median": 0.0
+          },
+          {
+            "feature": "swin",
+            "op": "<=",
+            "threshold": 127.5,
+            "attack_median": 0.0,
+            "normal_median": 255.0
+          }
+        ],
+        "support": [
+          {
+            "feature": "ct_srv_src",
+            "op": ">=",
+            "threshold": 17.0,
+            "attack_median": 29.0,
+            "normal_median": 5.0
+          },
+          {
+            "feature": "rate",
+            "op": ">=",
+            "threshold": 126730.5846,
+            "attack_median": 250000.0,
+            "normal_median": 3461.1692
+          },
+          {
+            "feature": "sload",
+            "op": ">=",
+            "threshold": 28779693.4688,
+            "attack_median": 57000000.0,
+            "normal_median": 559386.9375
+          },
+          {
+            "feature": "ct_dst_ltm",
+            "op": ">=",
+            "threshold": 10.5,
+            "attack_median": 18.0,
+            "normal_median": 3.0
+          },
+          {
+            "feature": "ct_src_ltm",
+            "op": ">=",
+            "threshold": 11.0,
+            "attack_median": 18.0,
+            "normal_median": 4.0
+          },
+          {
+            "feature": "sbytes",
+            "op": "<=",
+            "threshold": 899.0,
+            "attack_median": 114.0,
+            "normal_median": 1684.0
+          }
+        ]
+      },
+      "reconciliation_with_md": "tu.md gán Generic = Brute Force là SAI theo R1. Dữ liệu thật (proto=udp 97.7%, service=dns 97.4%, state=INT 98.5%, sttl=254, dur≈0) khớp đặc trưng tấn công mật mã/DNS, không khớp brute-force (lẽ ra state=CON, sttl=64). Baseline DÙNG profile thật. Nếu cần baseline 'brute force' riêng, nó KHÔNG ánh xạ vào lớp nào của UNSW-NB15 — phải gán nhãn từ capture lab riêng. || [chi tiết định lượng] ⚠️ SAI LỆCH LỚN: tu.md mô tả Generic = Brute Force (SSH/FTP/HTTP, state=CON, sttl=64, payload mã hóa). Lớp Generic THẬT trong UNSW-NB15 là tấn công kiểu mật mã trên nền DNS/UDP: proto=udp 97.7%, service=dns 97.4%, state=INT 98.5%, sttl=254, dur≈0, sbytes≈114, smean≈57. Điểm DUY NHẤT khớp: ct_* (connection-tracking) cao nhất trong các lớp (ct_srv_src median 29, ct_dst_ltm 18) — đúng tinh thần 'lặp nhiều kết nối' của tu.md, nhưng giao thức/state/sttl hoàn toàn khác. => Khi phân loại trên NB15, DÙNG profile thật này, KHÔNG dùng mô tả brute-force của tu.md.",
+      "documented_definition": "R1: 'A technique that works against all block-ciphers (with a given block and key size), without consideration about the structure of the block-cipher' — tấn công mật mã collision, KHÔNG phải brute-force đăng nhập.",
+      "definition_source": "Moustafa & Slay 2015 (R1)",
+      "verdict_vs_md": "REFUTED_md"
+    },
+    "Exploits": {
+      "count": 44525,
+      "share_pct": 1.753,
+      "profile_numeric": {
+        "dur": {
+          "mean": 2.1229,
+          "median": 0.5068,
+          "p25": 0.0,
+          "p75": 1.3584
+        },
+        "sbytes": {
+          "mean": 29655.0041,
+          "median": 842.0,
+          "p25": 200.0,
+          "p75": 1454.0
+        },
+        "dbytes": {
+          "mean": 17748.0419,
+          "median": 354.0,
+          "p25": 0.0,
+          "p75": 2058.0
+        },
+        "sttl": {
+          "mean": 172.2062,
+          "median": 254.0,
+          "p25": 62.0,
+          "p75": 254.0
+        },
+        "dttl": {
+          "mean": 156.7561,
+          "median": 252.0,
+          "p25": 0.0,
+          "p75": 252.0
+        },
+        "sloss": {
+          "mean": 12.8392,
+          "median": 2.0,
+          "p25": 0.0,
+          "p75": 4.0
+        },
+        "dloss": {
+          "mean": 8.644,
+          "median": 1.0,
+          "p25": 0.0,
+          "p75": 7.0
+        },
+        "sload": {
+          "mean": 61165712.0511,
+          "median": 27680.2578,
+          "p25": 7326.4014,
+          "p75": 88888888.0
+        },
+        "dload": {
+          "mean": 58910.4396,
+          "median": 4316.1377,
+          "p25": 0.0,
+          "p75": 15228.1045
+        },
+        "spkts": {
+          "mean": 33.962,
+          "median": 10.0,
+          "p25": 2.0,
+          "p75": 20.0
+        },
+        "dpkts": {
+          "mean": 23.3759,
+          "median": 8.0,
+          "p25": 0.0,
+          "p75": 20.0
+        },
+        "swin": {
+          "mean": 157.1693,
+          "median": 255.0,
+          "p25": 0.0,
+          "p75": 255.0
+        },
+        "smean": {
+          "mean": 188.713,
+          "median": 100.0,
+          "p25": 76.0,
+          "p75": 108.0
+        },
+        "dmean": {
+          "mean": 180.2631,
+          "median": 45.0,
+          "p25": 0.0,
+          "p75": 147.0
+        },
+        "trans_depth": {
+          "mean": 0.2512,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "response_body_len": {
+          "mean": 2566.3842,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "sjit": {
+          "mean": 3606.6131,
+          "median": 1674.7825,
+          "p25": 0.0,
+          "p75": 4271.7711
+        },
+        "djit": {
+          "mean": 1009.4591,
+          "median": 71.8345,
+          "p25": 0.0,
+          "p75": 301.6716
+        },
+        "sinpkt": {
+          "mean": 89.5129,
+          "median": 34.8397,
+          "p25": 0.009,
+          "p75": 82.7938
+        },
+        "dinpkt": {
+          "mean": 58.6507,
+          "median": 34.6752,
+          "p25": 0.0,
+          "p75": 78.8644
+        },
+        "tcprtt": {
+          "mean": 0.0742,
+          "median": 0.0582,
+          "p25": 0.0,
+          "p75": 0.1278
+        },
+        "synack": {
+          "mean": 0.0354,
+          "median": 0.0161,
+          "p25": 0.0,
+          "p75": 0.0645
+        },
+        "ackdat": {
+          "mean": 0.0388,
+          "median": 0.0425,
+          "p25": 0.0,
+          "p75": 0.0622
+        },
+        "is_sm_ips_ports": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ct_state_ttl": {
+          "mean": 1.4069,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 2.0
+        },
+        "ct_flw_http_mthd": {
+          "mean": 0.7546,
+          "median": 1.0,
+          "p25": 0.0,
+          "p75": 1.0
+        },
+        "is_ftp_login": {
+          "mean": 0.255,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ct_ftp_cmd": {
+          "mean": 0.255,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ct_srv_src": {
+          "mean": 2.9271,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 4.0
+        },
+        "ct_srv_dst": {
+          "mean": 2.6976,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 4.0
+        },
+        "ct_dst_ltm": {
+          "mean": 1.9974,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 2.0
+        },
+        "ct_src_ltm": {
+          "mean": 3.2803,
+          "median": 2.0,
+          "p25": 1.0,
+          "p75": 3.0
+        },
+        "ct_src_dport_ltm": {
+          "mean": 1.5511,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 2.0
+        },
+        "ct_dst_sport_ltm": {
+          "mean": 1.5099,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 2.0
+        },
+        "ct_dst_src_ltm": {
+          "mean": 2.9146,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 4.0
+        },
+        "rate": {
+          "mean": 137125.7363,
+          "median": 60.3471,
+          "p25": 25.7348,
+          "p75": 222222.2222
+        }
+      },
+      "categorical": {
+        "proto": {
+          "tcp": 61.6,
+          "unas": 14.7,
+          "ospf": 3.4,
+          "udp": 2.0
+        },
+        "state": {
+          "fin": 61.4,
+          "int": 36.0,
+          "con": 1.7,
+          "req": 0.9
+        },
+        "service": {
+          "-": 51.8,
+          "http": 25.8,
+          "smtp": 9.3,
+          "ftp": 4.8
+        }
+      },
+      "signature": {
+        "decisive": [
+          {
+            "feature": "sttl",
+            "op": ">=",
+            "threshold": 142.5,
+            "attack_median": 254.0,
+            "normal_median": 31.0
+          },
+          {
+            "feature": "dttl",
+            "op": ">=",
+            "threshold": 140.5,
+            "attack_median": 252.0,
+            "normal_median": 29.0
+          }
+        ],
+        "support": [
+          {
+            "feature": "dinpkt",
+            "op": ">=",
+            "threshold": 17.5977,
+            "attack_median": 34.6752,
+            "normal_median": 0.5203
+          },
+          {
+            "feature": "sinpkt",
+            "op": ">=",
+            "threshold": 17.6961,
+            "attack_median": 34.8397,
+            "normal_median": 0.5525
+          },
+          {
+            "feature": "sjit",
+            "op": ">=",
+            "threshold": 849.2864,
+            "attack_median": 1674.7825,
+            "normal_median": 23.7903
+          },
+          {
+            "feature": "ct_state_ttl",
+            "op": ">=",
+            "threshold": 0.5,
+            "attack_median": 1.0,
+            "normal_median": 0.0
+          },
+          {
+            "feature": "ct_flw_http_mthd",
+            "op": ">=",
+            "threshold": 0.5,
+            "attack_median": 1.0,
+            "normal_median": 0.0
+          },
+          {
+            "feature": "ct_srv_src",
+            "op": "<=",
+            "threshold": 3.0,
+            "attack_median": 1.0,
+            "normal_median": 5.0
+          }
+        ]
+      },
+      "reconciliation_with_md": "huy.md khớp tốt dữ liệu thật. || [chi tiết định lượng] KHỚP TỐT với huy.md: sttl median 254 nhưng p25=62 (bimodal), sbytes mean cực cao (payload), dttl 252 (đích phản hồi), synack/tcprtt cao (server xử lý payload), service=http 25.8%/smtp/ftp, state INT tăng 36%. ct_srv_src median=1 (kết nối đơn lẻ) đúng như huy.md.",
+      "documented_definition": "R1: 'A sequence of instructions taking advantage of a glitch/bug/vulnerability'.",
+      "definition_source": "Moustafa & Slay 2015 (R1)",
+      "verdict_vs_md": "CONFIRMED"
+    },
+    "Fuzzers": {
+      "count": 24246,
+      "share_pct": 0.955,
+      "profile_numeric": {
+        "dur": {
+          "mean": 2.6739,
+          "median": 0.5895,
+          "p25": 0.0,
+          "p75": 1.0809
+        },
+        "sbytes": {
+          "mean": 6764.3026,
+          "median": 820.0,
+          "p25": 532.0,
+          "p75": 1494.0
+        },
+        "dbytes": {
+          "mean": 518.7721,
+          "median": 268.0,
+          "p25": 0.0,
+          "p75": 682.0
+        },
+        "sttl": {
+          "mean": 253.4079,
+          "median": 254.0,
+          "p25": 254.0,
+          "p75": 254.0
+        },
+        "dttl": {
+          "mean": 160.9003,
+          "median": 252.0,
+          "p25": 0.0,
+          "p75": 252.0
+        },
+        "sloss": {
+          "mean": 3.8636,
+          "median": 2.0,
+          "p25": 0.0,
+          "p75": 3.0
+        },
+        "dloss": {
+          "mean": 1.1526,
+          "median": 1.0,
+          "p25": 0.0,
+          "p75": 2.0
+        },
+        "sload": {
+          "mean": 127693039.4914,
+          "median": 17696.0234,
+          "p25": 6676.4977,
+          "p75": 80000000.0
+        },
+        "dload": {
+          "mean": 3221.3447,
+          "median": 2492.0259,
+          "p25": 0.0,
+          "p75": 4427.2681
+        },
+        "spkts": {
+          "mean": 13.7648,
+          "median": 10.0,
+          "p25": 2.0,
+          "p75": 12.0
+        },
+        "dpkts": {
+          "mean": 6.0957,
+          "median": 6.0,
+          "p25": 0.0,
+          "p75": 8.0
+        },
+        "swin": {
+          "mean": 162.7431,
+          "median": 255.0,
+          "p25": 0.0,
+          "p75": 255.0
+        },
+        "smean": {
+          "mean": 238.8262,
+          "median": 91.0,
+          "p25": 57.0,
+          "p75": 252.0
+        },
+        "dmean": {
+          "mean": 38.8316,
+          "median": 44.0,
+          "p25": 0.0,
+          "p75": 54.0
+        },
+        "trans_depth": {
+          "mean": 0.0485,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "response_body_len": {
+          "mean": 2.7342,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "sjit": {
+          "mean": 21597.8233,
+          "median": 2664.1226,
+          "p25": 0.0,
+          "p75": 4967.5463
+        },
+        "djit": {
+          "mean": 846.0694,
+          "median": 105.9657,
+          "p25": 0.0,
+          "p75": 184.2549
+        },
+        "sinpkt": {
+          "mean": 410.9509,
+          "median": 49.3835,
+          "p25": 0.01,
+          "p75": 92.1569
+        },
+        "dinpkt": {
+          "mean": 318.4076,
+          "median": 69.4684,
+          "p25": 0.0,
+          "p75": 118.6915
+        },
+        "tcprtt": {
+          "mean": 0.0988,
+          "median": 0.1089,
+          "p25": 0.0,
+          "p75": 0.1634
+        },
+        "synack": {
+          "mean": 0.0522,
+          "median": 0.0552,
+          "p25": 0.0,
+          "p75": 0.0857
+        },
+        "ackdat": {
+          "mean": 0.0466,
+          "median": 0.0485,
+          "p25": 0.0,
+          "p75": 0.0761
+        },
+        "is_sm_ips_ports": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ct_state_ttl": {
+          "mean": 1.4212,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 2.0
+        },
+        "ct_flw_http_mthd": {
+          "mean": 0.2505,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "is_ftp_login": {
+          "mean": 0.0274,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ct_ftp_cmd": {
+          "mean": 0.0274,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ct_srv_src": {
+          "mean": 6.1246,
+          "median": 4.0,
+          "p25": 3.0,
+          "p75": 7.0
+        },
+        "ct_srv_dst": {
+          "mean": 5.4367,
+          "median": 4.0,
+          "p25": 2.0,
+          "p75": 6.0
+        },
+        "ct_dst_ltm": {
+          "mean": 2.5273,
+          "median": 2.0,
+          "p25": 1.0,
+          "p75": 2.0
+        },
+        "ct_src_ltm": {
+          "mean": 3.3766,
+          "median": 2.0,
+          "p25": 1.0,
+          "p75": 3.0
+        },
+        "ct_src_dport_ltm": {
+          "mean": 2.1335,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 2.0
+        },
+        "ct_dst_sport_ltm": {
+          "mean": 1.4164,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 1.0
+        },
+        "ct_dst_src_ltm": {
+          "mean": 4.413,
+          "median": 3.0,
+          "p25": 2.0,
+          "p75": 5.0
+        },
+        "rate": {
+          "mean": 136118.214,
+          "median": 35.7393,
+          "p25": 20.5422,
+          "p75": 200000.0
+        }
+      },
+      "categorical": {
+        "proto": {
+          "tcp": 63.8,
+          "udp": 24.9,
+          "unas": 4.7,
+          "ospf": 0.9
+        },
+        "state": {
+          "fin": 63.8,
+          "int": 34.5,
+          "req": 1.6,
+          "con": 0.2
+        },
+        "service": {
+          "-": 90.7,
+          "http": 4.5,
+          "ftp": 3.3,
+          "dns": 1.5
+        }
+      },
+      "signature": {
+        "decisive": [
+          {
+            "feature": "sttl",
+            "op": ">=",
+            "threshold": 142.5,
+            "attack_median": 254.0,
+            "normal_median": 31.0
+          },
+          {
+            "feature": "dttl",
+            "op": ">=",
+            "threshold": 140.5,
+            "attack_median": 252.0,
+            "normal_median": 29.0
+          },
+          {
+            "feature": "dinpkt",
+            "op": ">=",
+            "threshold": 34.9944,
+            "attack_median": 69.4684,
+            "normal_median": 0.5203
+          }
+        ],
+        "support": [
+          {
+            "feature": "sjit",
+            "op": ">=",
+            "threshold": 1343.9565,
+            "attack_median": 2664.1226,
+            "normal_median": 23.7903
+          },
+          {
+            "feature": "sinpkt",
+            "op": ">=",
+            "threshold": 24.968,
+            "attack_median": 49.3835,
+            "normal_median": 0.5525
+          },
+          {
+            "feature": "djit",
+            "op": ">=",
+            "threshold": 60.6776,
+            "attack_median": 105.9657,
+            "normal_median": 15.3896
+          },
+          {
+            "feature": "ct_state_ttl",
+            "op": ">=",
+            "threshold": 0.5,
+            "attack_median": 1.0,
+            "normal_median": 0.0
+          },
+          {
+            "feature": "ct_src_ltm",
+            "op": "<=",
+            "threshold": 3.0,
+            "attack_median": 2.0,
+            "normal_median": 4.0
+          },
+          {
+            "feature": "dpkts",
+            "op": "<=",
+            "threshold": 12.0,
+            "attack_median": 6.0,
+            "normal_median": 18.0
+          }
+        ]
+      },
+      "reconciliation_with_md": "huy.md khớp tốt; đặc biệt dttl=252 (đích phản hồi) phân biệt với DoS. || [chi tiết định lượng] KHỚP TỐT với huy.md: sttl=254 VÀ dttl=252 (đích CÓ phản hồi — khác DoS), tcprtt/synack cao, dbytes nhỏ (268), state INT 34.5%. sload median ~17k thấp hơn con số huy.md nêu (median tính trên full set), nhưng hướng đúng.",
+      "documented_definition": "R1: 'Attempting to cause a program/network suspended by feeding randomly generated data'.",
+      "definition_source": "Moustafa & Slay 2015 (R1)",
+      "verdict_vs_md": "CONFIRMED"
+    },
+    "DoS": {
+      "count": 16353,
+      "share_pct": 0.644,
+      "profile_numeric": {
+        "dur": {
+          "mean": 2.4488,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.2752
+        },
+        "sbytes": {
+          "mean": 18360.7938,
+          "median": 200.0,
+          "p25": 200.0,
+          "p75": 754.0
+        },
+        "dbytes": {
+          "mean": 21747.1337,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "sttl": {
+          "mean": 230.861,
+          "median": 254.0,
+          "p25": 254.0,
+          "p75": 254.0
+        },
+        "dttl": {
+          "mean": 52.7449,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "sloss": {
+          "mean": 7.8033,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "dloss": {
+          "mean": 8.4776,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "sload": {
+          "mean": 123352343.2908,
+          "median": 88888888.0,
+          "p25": 38179.918,
+          "p75": 160000000.0
+        },
+        "dload": {
+          "mean": 17008.2492,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "spkts": {
+          "mean": 24.1173,
+          "median": 2.0,
+          "p25": 2.0,
+          "p75": 10.0
+        },
+        "dpkts": {
+          "mean": 21.2523,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "swin": {
+          "mean": 52.0198,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "smean": {
+          "mean": 139.1059,
+          "median": 100.0,
+          "p25": 100.0,
+          "p75": 100.0
+        },
+        "dmean": {
+          "mean": 48.4685,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "trans_depth": {
+          "mean": 0.0981,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "response_body_len": {
+          "mean": 3674.233,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "sjit": {
+          "mean": 942.9872,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 477.0024
+        },
+        "djit": {
+          "mean": 118.6085,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "sinpkt": {
+          "mean": 79.3347,
+          "median": 0.009,
+          "p25": 0.005,
+          "p75": 25.0656
+        },
+        "dinpkt": {
+          "mean": 19.0327,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "tcprtt": {
+          "mean": 0.0234,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "synack": {
+          "mean": 0.011,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ackdat": {
+          "mean": 0.0123,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "is_sm_ips_ports": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ct_state_ttl": {
+          "mean": 1.8318,
+          "median": 2.0,
+          "p25": 2.0,
+          "p75": 2.0
+        },
+        "ct_flw_http_mthd": {
+          "mean": 0.6624,
+          "median": 1.0,
+          "p25": 0.0,
+          "p75": 1.0
+        },
+        "is_ftp_login": {
+          "mean": 0.0193,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ct_ftp_cmd": {
+          "mean": 0.0193,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ct_srv_src": {
+          "mean": 4.544,
+          "median": 4.0,
+          "p25": 2.0,
+          "p75": 6.0
+        },
+        "ct_srv_dst": {
+          "mean": 4.4047,
+          "median": 4.0,
+          "p25": 1.0,
+          "p75": 6.0
+        },
+        "ct_dst_ltm": {
+          "mean": 2.4437,
+          "median": 2.0,
+          "p25": 1.0,
+          "p75": 3.0
+        },
+        "ct_src_ltm": {
+          "mean": 4.2999,
+          "median": 3.0,
+          "p25": 1.0,
+          "p75": 5.0
+        },
+        "ct_src_dport_ltm": {
+          "mean": 2.1238,
+          "median": 2.0,
+          "p25": 1.0,
+          "p75": 3.0
+        },
+        "ct_dst_sport_ltm": {
+          "mean": 2.098,
+          "median": 2.0,
+          "p25": 1.0,
+          "p75": 3.0
+        },
+        "ct_dst_src_ltm": {
+          "mean": 4.6867,
+          "median": 4.0,
+          "p25": 1.0,
+          "p75": 6.0
+        },
+        "rate": {
+          "mean": 294005.912,
+          "median": 222222.2222,
+          "p25": 75.9811,
+          "p75": 400000.0
+        }
+      },
+      "categorical": {
+        "proto": {
+          "unas": 32.1,
+          "tcp": 20.4,
+          "ospf": 5.8,
+          "udp": 3.2
+        },
+        "state": {
+          "int": 76.1,
+          "fin": 19.8,
+          "con": 2.5,
+          "req": 1.6
+        },
+        "service": {
+          "-": 84.7,
+          "http": 10.5,
+          "smtp": 2.5,
+          "dns": 0.9
+        }
+      },
+      "signature": {
+        "decisive": [
+          {
+            "feature": "sttl",
+            "op": ">=",
+            "threshold": 142.5,
+            "attack_median": 254.0,
+            "normal_median": 31.0
+          },
+          {
+            "feature": "dttl",
+            "op": "<=",
+            "threshold": 14.5,
+            "attack_median": 0.0,
+            "normal_median": 29.0
+          },
+          {
+            "feature": "ct_state_ttl",
+            "op": ">=",
+            "threshold": 1.0,
+            "attack_median": 2.0,
+            "normal_median": 0.0
+          },
+          {
+            "feature": "swin",
+            "op": "<=",
+            "threshold": 127.5,
+            "attack_median": 0.0,
+            "normal_median": 255.0
+          },
+          {
+            "feature": "sload",
+            "op": ">=",
+            "threshold": 44724137.4688,
+            "attack_median": 88888888.0,
+            "normal_median": 559386.9375
+          },
+          {
+            "feature": "rate",
+            "op": ">=",
+            "threshold": 112841.6957,
+            "attack_median": 222222.2222,
+            "normal_median": 3461.1692
+          }
+        ],
+        "support": [
+          {
+            "feature": "sloss",
+            "op": "<=",
+            "threshold": 2.0,
+            "attack_median": 0.0,
+            "normal_median": 4.0
+          },
+          {
+            "feature": "dpkts",
+            "op": "<=",
+            "threshold": 9.0,
+            "attack_median": 0.0,
+            "normal_median": 18.0
+          },
+          {
+            "feature": "sbytes",
+            "op": "<=",
+            "threshold": 942.0,
+            "attack_median": 200.0,
+            "normal_median": 1684.0
+          },
+          {
+            "feature": "smean",
+            "op": ">=",
+            "threshold": 86.5,
+            "attack_median": 100.0,
+            "normal_median": 73.0
+          },
+          {
+            "feature": "ct_flw_http_mthd",
+            "op": ">=",
+            "threshold": 0.5,
+            "attack_median": 1.0,
+            "normal_median": 0.0
+          },
+          {
+            "feature": "dloss",
+            "op": "<=",
+            "threshold": 2.5,
+            "attack_median": 0.0,
+            "normal_median": 5.0
+          }
+        ]
+      },
+      "reconciliation_with_md": "huy.md khớp tốt dữ liệu thật. || [chi tiết định lượng] KHỚP TỐT với huy.md: sttl=254 (≥200), state=INT (76%), dbytes=0/dttl=0 (one-way flood), ct_state_ttl=2, proto unas xuất hiện mạnh (32%). Lưu ý huy.md cảnh báo đúng: rate KHÔNG cao hơn Normal — xác nhận median rate thấp.",
+      "documented_definition": "R1: 'An attempt to make a server/network resource unavailable to users, by interrupting/suspending services'.",
+      "definition_source": "Moustafa & Slay 2015 (R1)",
+      "verdict_vs_md": "CONFIRMED"
+    },
+    "Reconnaissance": {
+      "count": 13987,
+      "share_pct": 0.551,
+      "profile_numeric": {
+        "dur": {
+          "mean": 1.005,
+          "median": 0.1945,
+          "p25": 0.0,
+          "p75": 0.8509
+        },
+        "sbytes": {
+          "mean": 751.3813,
+          "median": 564.0,
+          "p25": 168.0,
+          "p75": 564.0
+        },
+        "dbytes": {
+          "mean": 1797.0892,
+          "median": 96.0,
+          "p25": 0.0,
+          "p75": 354.0
+        },
+        "sttl": {
+          "mean": 253.0152,
+          "median": 254.0,
+          "p25": 254.0,
+          "p75": 254.0
+        },
+        "dttl": {
+          "mean": 125.6823,
+          "median": 60.0,
+          "p25": 0.0,
+          "p75": 252.0
+        },
+        "sloss": {
+          "mean": 0.9982,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 2.0
+        },
+        "dloss": {
+          "mean": 1.1012,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 1.0
+        },
+        "sload": {
+          "mean": 70491429.9932,
+          "median": 31195.0312,
+          "p25": 5038.1643,
+          "p75": 88888888.0
+        },
+        "dload": {
+          "mean": 2425.5742,
+          "median": 316.1909,
+          "p25": 0.0,
+          "p75": 2950.0261
+        },
+        "spkts": {
+          "mean": 7.0346,
+          "median": 10.0,
+          "p25": 2.0,
+          "p75": 10.0
+        },
+        "dpkts": {
+          "mean": 4.9838,
+          "median": 2.0,
+          "p25": 0.0,
+          "p75": 8.0
+        },
+        "swin": {
+          "mean": 126.9804,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 255.0
+        },
+        "smean": {
+          "mean": 79.1012,
+          "median": 84.0,
+          "p25": 56.0,
+          "p75": 84.0
+        },
+        "dmean": {
+          "mean": 24.0902,
+          "median": 44.0,
+          "p25": 0.0,
+          "p75": 44.0
+        },
+        "trans_depth": {
+          "mean": 0.1323,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "response_body_len": {
+          "mean": 30.8627,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "sjit": {
+          "mean": 3509.4766,
+          "median": 1005.5179,
+          "p25": 0.0,
+          "p75": 6028.0396
+        },
+        "djit": {
+          "mean": 107.3624,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 159.0439
+        },
+        "sinpkt": {
+          "mean": 69.9573,
+          "median": 20.0382,
+          "p25": 0.008,
+          "p75": 91.4373
+        },
+        "dinpkt": {
+          "mean": 67.3675,
+          "median": 0.006,
+          "p25": 0.0,
+          "p75": 110.7499
+        },
+        "tcprtt": {
+          "mean": 0.06,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.1132
+        },
+        "synack": {
+          "mean": 0.0286,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0567
+        },
+        "ackdat": {
+          "mean": 0.0315,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0558
+        },
+        "is_sm_ips_ports": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ct_state_ttl": {
+          "mean": 1.5156,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 2.0
+        },
+        "ct_flw_http_mthd": {
+          "mean": 0.5772,
+          "median": 1.0,
+          "p25": 0.0,
+          "p75": 1.0
+        },
+        "is_ftp_login": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ct_ftp_cmd": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ct_srv_src": {
+          "mean": 2.5555,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 3.0
+        },
+        "ct_srv_dst": {
+          "mean": 1.9855,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 2.0
+        },
+        "ct_dst_ltm": {
+          "mean": 1.6675,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 1.0
+        },
+        "ct_src_ltm": {
+          "mean": 2.705,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 2.0
+        },
+        "ct_src_dport_ltm": {
+          "mean": 1.2414,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 1.0
+        },
+        "ct_dst_sport_ltm": {
+          "mean": 1.2116,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 1.0
+        },
+        "ct_dst_src_ltm": {
+          "mean": 2.1003,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 1.0
+        },
+        "rate": {
+          "mean": 199536.7849,
+          "median": 81.7716,
+          "p25": 20.9499,
+          "p75": 250000.0
+        }
+      },
+      "categorical": {
+        "proto": {
+          "tcp": 49.8,
+          "udp": 35.0,
+          "unas": 6.0,
+          "ospf": 1.6
+        },
+        "state": {
+          "fin": 49.7,
+          "int": 49.4,
+          "req": 0.5,
+          "con": 0.4
+        },
+        "service": {
+          "-": 84.2,
+          "http": 14.8,
+          "snmp": 0.6,
+          "dns": 0.3
+        }
+      },
+      "signature": {
+        "decisive": [
+          {
+            "feature": "sttl",
+            "op": ">=",
+            "threshold": 142.5,
+            "attack_median": 254.0,
+            "normal_median": 31.0
+          }
+        ],
+        "support": [
+          {
+            "feature": "swin",
+            "op": "<=",
+            "threshold": 127.5,
+            "attack_median": 0.0,
+            "normal_median": 255.0
+          },
+          {
+            "feature": "ct_src_ltm",
+            "op": "<=",
+            "threshold": 2.5,
+            "attack_median": 1.0,
+            "normal_median": 4.0
+          },
+          {
+            "feature": "ct_dst_ltm",
+            "op": "<=",
+            "threshold": 2.0,
+            "attack_median": 1.0,
+            "normal_median": 3.0
+          },
+          {
+            "feature": "sloss",
+            "op": "<=",
+            "threshold": 2.0,
+            "attack_median": 0.0,
+            "normal_median": 4.0
+          },
+          {
+            "feature": "ct_srv_src",
+            "op": "<=",
+            "threshold": 3.0,
+            "attack_median": 1.0,
+            "normal_median": 5.0
+          },
+          {
+            "feature": "ct_state_ttl",
+            "op": ">=",
+            "threshold": 0.5,
+            "attack_median": 1.0,
+            "normal_median": 0.0
+          }
+        ]
+      },
+      "reconciliation_with_md": "Định nghĩa bi.md đúng theo R1. Nhưng số bi.md (sttl=54, ct_dst_ltm=55) sai định lượng: thật là sttl=254, ct_dst_ltm median=1. Baseline dùng số thật. || [chi tiết định lượng] KHỚP một phần bi.md: sttl=254 (bi.md ghi 54 — SAI, thực tế 254), state FIN/INT ~50/50, dttl thấp/biến thiên, dbytes thấp. bi.md nhấn ct_dst_ltm rất cao (55) nhưng THỰC TẾ median chỉ 1 (p75=1) — giá trị minh họa của bi.md phóng đại nhiều. Dấu hiệu thật: sttl=254 + dur ngắn + dbytes thấp + ct_* gần Normal.",
+      "documented_definition": "R1: 'Contains all strikes that can simulate attacks gathering information' — thăm dò/thu thập thông tin (probe).",
+      "definition_source": "Moustafa & Slay 2015 (R1)",
+      "verdict_vs_md": "DEF_CONFIRMED_values_corrected"
+    },
+    "Analysis": {
+      "count": 2677,
+      "share_pct": 0.105,
+      "profile_numeric": {
+        "dur": {
+          "mean": 1.4169,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.4923
+        },
+        "sbytes": {
+          "mean": 839.6451,
+          "median": 200.0,
+          "p25": 200.0,
+          "p75": 794.0
+        },
+        "dbytes": {
+          "mean": 296.1845,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "sttl": {
+          "mean": 210.0366,
+          "median": 254.0,
+          "p25": 254.0,
+          "p75": 254.0
+        },
+        "dttl": {
+          "mean": 58.7314,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "sloss": {
+          "mean": 0.4882,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "dloss": {
+          "mean": 0.492,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "sload": {
+          "mean": 117520373.8427,
+          "median": 88888888.0,
+          "p25": 12149.0977,
+          "p75": 160000000.0
+        },
+        "dload": {
+          "mean": 2530.4809,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "spkts": {
+          "mean": 5.3549,
+          "median": 2.0,
+          "p25": 2.0,
+          "p75": 10.0
+        },
+        "dpkts": {
+          "mean": 2.1233,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "swin": {
+          "mean": 59.2492,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "smean": {
+          "mean": 98.2391,
+          "median": 100.0,
+          "p25": 90.0,
+          "p75": 100.0
+        },
+        "dmean": {
+          "mean": 33.1266,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "trans_depth": {
+          "mean": 0.2081,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "response_body_len": {
+          "mean": 39.0235,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "sjit": {
+          "mean": 11397.988,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 660.4658
+        },
+        "djit": {
+          "mean": 381.4796,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "sinpkt": {
+          "mean": 153.6932,
+          "median": 0.009,
+          "p25": 0.005,
+          "p75": 56.0249
+        },
+        "dinpkt": {
+          "mean": 145.3025,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "tcprtt": {
+          "mean": 0.0373,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "synack": {
+          "mean": 0.0196,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ackdat": {
+          "mean": 0.0176,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "is_sm_ips_ports": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ct_state_ttl": {
+          "mean": 1.7923,
+          "median": 2.0,
+          "p25": 2.0,
+          "p75": 2.0
+        },
+        "ct_flw_http_mthd": {
+          "mean": 3.0702,
+          "median": 1.0,
+          "p25": 0.0,
+          "p75": 4.0
+        },
+        "is_ftp_login": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ct_ftp_cmd": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ct_srv_src": {
+          "mean": 6.2727,
+          "median": 5.0,
+          "p25": 3.0,
+          "p75": 8.0
+        },
+        "ct_srv_dst": {
+          "mean": 6.0878,
+          "median": 5.0,
+          "p25": 3.0,
+          "p75": 8.0
+        },
+        "ct_dst_ltm": {
+          "mean": 3.0329,
+          "median": 2.0,
+          "p25": 2.0,
+          "p75": 4.0
+        },
+        "ct_src_ltm": {
+          "mean": 4.9555,
+          "median": 3.0,
+          "p25": 2.0,
+          "p75": 6.0
+        },
+        "ct_src_dport_ltm": {
+          "mean": 2.6739,
+          "median": 2.0,
+          "p25": 1.0,
+          "p75": 3.0
+        },
+        "ct_dst_sport_ltm": {
+          "mean": 2.6137,
+          "median": 2.0,
+          "p25": 1.0,
+          "p75": 3.0
+        },
+        "ct_dst_src_ltm": {
+          "mean": 5.0564,
+          "median": 4.0,
+          "p25": 3.0,
+          "p75": 6.0
+        },
+        "rate": {
+          "mean": 303395.287,
+          "median": 222222.2222,
+          "p25": 36.7117,
+          "p75": 400000.0
+        }
+      },
+      "categorical": {
+        "proto": {
+          "unas": 34.6,
+          "tcp": 23.2,
+          "ospf": 2.8,
+          "sctp": 1.0
+        },
+        "state": {
+          "int": 75.7,
+          "fin": 23.2,
+          "req": 0.7,
+          "con": 0.3
+        },
+        "service": {
+          "-": 78.9,
+          "http": 20.8,
+          "smtp": 0.2
+        }
+      },
+      "signature": {
+        "decisive": [
+          {
+            "feature": "sttl",
+            "op": ">=",
+            "threshold": 142.5,
+            "attack_median": 254.0,
+            "normal_median": 31.0
+          },
+          {
+            "feature": "dttl",
+            "op": "<=",
+            "threshold": 14.5,
+            "attack_median": 0.0,
+            "normal_median": 29.0
+          },
+          {
+            "feature": "ct_state_ttl",
+            "op": ">=",
+            "threshold": 1.0,
+            "attack_median": 2.0,
+            "normal_median": 0.0
+          },
+          {
+            "feature": "swin",
+            "op": "<=",
+            "threshold": 127.5,
+            "attack_median": 0.0,
+            "normal_median": 255.0
+          },
+          {
+            "feature": "sload",
+            "op": ">=",
+            "threshold": 44724137.4688,
+            "attack_median": 88888888.0,
+            "normal_median": 559386.9375
+          },
+          {
+            "feature": "rate",
+            "op": ">=",
+            "threshold": 112841.6957,
+            "attack_median": 222222.2222,
+            "normal_median": 3461.1692
+          }
+        ],
+        "support": [
+          {
+            "feature": "sloss",
+            "op": "<=",
+            "threshold": 2.0,
+            "attack_median": 0.0,
+            "normal_median": 4.0
+          },
+          {
+            "feature": "dpkts",
+            "op": "<=",
+            "threshold": 9.0,
+            "attack_median": 0.0,
+            "normal_median": 18.0
+          },
+          {
+            "feature": "sbytes",
+            "op": "<=",
+            "threshold": 942.0,
+            "attack_median": 200.0,
+            "normal_median": 1684.0
+          },
+          {
+            "feature": "smean",
+            "op": ">=",
+            "threshold": 86.5,
+            "attack_median": 100.0,
+            "normal_median": 73.0
+          },
+          {
+            "feature": "dloss",
+            "op": "<=",
+            "threshold": 2.5,
+            "attack_median": 0.0,
+            "normal_median": 5.0
+          },
+          {
+            "feature": "ct_dst_sport_ltm",
+            "op": ">=",
+            "threshold": 1.5,
+            "attack_median": 2.0,
+            "normal_median": 1.0
+          }
+        ]
+      },
+      "reconciliation_with_md": "Định nghĩa bi.md đúng theo R1 (port scan/spam/web script). Số bi.md (ct_src_dport_ltm=23) phóng đại; thật median=2. Nhánh web: ct_flw_http_mthd>0 đúng hướng. Baseline dùng số thật. || [chi tiết định lượng] KHỚP một phần bi.md: sttl=254, state=INT 75.7%, dbytes=0/dttl=0/dload=0 (one-way), proto unas 34.6%. bi.md nhấn ct_src_dport_ltm cao (23) nhưng thực tế median chỉ 2. Nhánh web có ct_flw_http_mthd>0 (median 1) đúng hướng. Giá trị số của bi.md là minh họa, không khớp định lượng.",
+      "documented_definition": "R1: 'Different intrusions that penetrate web applications via ports (port scan), emails (spam) and web scripts (HTML file penetration)'.",
+      "definition_source": "Moustafa & Slay 2015 (R1)",
+      "verdict_vs_md": "DEF_CONFIRMED_values_corrected"
+    },
+    "Backdoors": {
+      "count": 2329,
+      "share_pct": 0.092,
+      "profile_numeric": {
+        "dur": {
+          "mean": 2.2246,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0001
+        },
+        "sbytes": {
+          "mean": 1520.8617,
+          "median": 200.0,
+          "p25": 200.0,
+          "p75": 200.0
+        },
+        "dbytes": {
+          "mean": 295.2941,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "sttl": {
+          "mean": 247.8351,
+          "median": 254.0,
+          "p25": 254.0,
+          "p75": 254.0
+        },
+        "dttl": {
+          "mean": 36.5719,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "sloss": {
+          "mean": 0.3272,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "dloss": {
+          "mean": 0.3598,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "sload": {
+          "mean": 120396989.2722,
+          "median": 88888888.0,
+          "p25": 32057.3652,
+          "p75": 160000000.0
+        },
+        "dload": {
+          "mean": 2573.6068,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "spkts": {
+          "mean": 6.7673,
+          "median": 2.0,
+          "p25": 2.0,
+          "p75": 2.0
+        },
+        "dpkts": {
+          "mean": 1.459,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "swin": {
+          "mean": 35.365,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "smean": {
+          "mean": 103.252,
+          "median": 100.0,
+          "p25": 100.0,
+          "p75": 100.0
+        },
+        "dmean": {
+          "mean": 17.8386,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "trans_depth": {
+          "mean": 0.0365,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "response_body_len": {
+          "mean": 11.6874,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "sjit": {
+          "mean": 904.6962,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "djit": {
+          "mean": 44.7222,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "sinpkt": {
+          "mean": 86.6451,
+          "median": 0.009,
+          "p25": 0.005,
+          "p75": 0.012
+        },
+        "dinpkt": {
+          "mean": 15.8129,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "tcprtt": {
+          "mean": 0.0177,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "synack": {
+          "mean": 0.0084,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ackdat": {
+          "mean": 0.0093,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "is_sm_ips_ports": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ct_state_ttl": {
+          "mean": 1.8909,
+          "median": 2.0,
+          "p25": 2.0,
+          "p75": 2.0
+        },
+        "ct_flw_http_mthd": {
+          "mean": 0.1748,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "is_ftp_login": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ct_ftp_cmd": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ct_srv_src": {
+          "mean": 6.1275,
+          "median": 5.0,
+          "p25": 2.0,
+          "p75": 9.0
+        },
+        "ct_srv_dst": {
+          "mean": 5.8429,
+          "median": 5.0,
+          "p25": 2.0,
+          "p75": 9.0
+        },
+        "ct_dst_ltm": {
+          "mean": 2.8965,
+          "median": 2.0,
+          "p25": 1.0,
+          "p75": 4.0
+        },
+        "ct_src_ltm": {
+          "mean": 4.7608,
+          "median": 3.0,
+          "p25": 2.0,
+          "p75": 6.0
+        },
+        "ct_src_dport_ltm": {
+          "mean": 2.5573,
+          "median": 2.0,
+          "p25": 1.0,
+          "p75": 3.0
+        },
+        "ct_dst_sport_ltm": {
+          "mean": 2.5466,
+          "median": 2.0,
+          "p25": 1.0,
+          "p75": 3.0
+        },
+        "ct_dst_src_ltm": {
+          "mean": 4.7746,
+          "median": 4.0,
+          "p25": 2.0,
+          "p75": 6.0
+        },
+        "rate": {
+          "mean": 307812.9201,
+          "median": 222222.2222,
+          "p25": 18867.9245,
+          "p75": 400000.0
+        }
+      },
+      "categorical": {
+        "proto": {
+          "unas": 34.6,
+          "tcp": 13.9,
+          "ospf": 7.0,
+          "sctp": 3.0
+        },
+        "state": {
+          "int": 81.5,
+          "fin": 13.9,
+          "con": 2.7,
+          "req": 1.9
+        },
+        "service": {
+          "-": 95.3,
+          "http": 4.0,
+          "irc": 0.5,
+          "ftp": 0.3
+        }
+      },
+      "signature": {
+        "decisive": [
+          {
+            "feature": "sttl",
+            "op": ">=",
+            "threshold": 142.5,
+            "attack_median": 254.0,
+            "normal_median": 31.0
+          },
+          {
+            "feature": "dttl",
+            "op": "<=",
+            "threshold": 14.5,
+            "attack_median": 0.0,
+            "normal_median": 29.0
+          },
+          {
+            "feature": "ct_state_ttl",
+            "op": ">=",
+            "threshold": 1.0,
+            "attack_median": 2.0,
+            "normal_median": 0.0
+          },
+          {
+            "feature": "swin",
+            "op": "<=",
+            "threshold": 127.5,
+            "attack_median": 0.0,
+            "normal_median": 255.0
+          },
+          {
+            "feature": "rate",
+            "op": ">=",
+            "threshold": 112841.6957,
+            "attack_median": 222222.2222,
+            "normal_median": 3461.1692
+          },
+          {
+            "feature": "sload",
+            "op": ">=",
+            "threshold": 44724137.4688,
+            "attack_median": 88888888.0,
+            "normal_median": 559386.9375
+          }
+        ],
+        "support": [
+          {
+            "feature": "sloss",
+            "op": "<=",
+            "threshold": 2.0,
+            "attack_median": 0.0,
+            "normal_median": 4.0
+          },
+          {
+            "feature": "sbytes",
+            "op": "<=",
+            "threshold": 942.0,
+            "attack_median": 200.0,
+            "normal_median": 1684.0
+          },
+          {
+            "feature": "dpkts",
+            "op": "<=",
+            "threshold": 9.0,
+            "attack_median": 0.0,
+            "normal_median": 18.0
+          },
+          {
+            "feature": "smean",
+            "op": ">=",
+            "threshold": 86.5,
+            "attack_median": 100.0,
+            "normal_median": 73.0
+          },
+          {
+            "feature": "dloss",
+            "op": "<=",
+            "threshold": 2.5,
+            "attack_median": 0.0,
+            "normal_median": 5.0
+          },
+          {
+            "feature": "spkts",
+            "op": "<=",
+            "threshold": 8.0,
+            "attack_median": 2.0,
+            "normal_median": 14.0
+          }
+        ]
+      },
+      "reconciliation_with_md": "Không có trong 3 file md. Profile thật chồng lấn DoS/Analysis — lớp khó nhất. || [chi tiết định lượng] Không có trong 3 file md. Profile thật: rất giống DoS/Analysis (sttl=254, state INT 81%, dbytes=0, proto unas), khó tách — đây là lớp khó phân loại nhất.",
+      "documented_definition": "R1: 'A technique of bypassing stealthy normal authentication, securing unauthorized remote access'.",
+      "definition_source": "Moustafa & Slay 2015 (R1)",
+      "verdict_vs_md": "NOT_IN_MD"
+    },
+    "Shellcode": {
+      "count": 1511,
+      "share_pct": 0.059,
+      "profile_numeric": {
+        "dur": {
+          "mean": 0.3629,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.4751
+        },
+        "sbytes": {
+          "mean": 532.8352,
+          "median": 536.0,
+          "p25": 249.0,
+          "p75": 693.0
+        },
+        "dbytes": {
+          "mean": 146.3997,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 268.0
+        },
+        "sttl": {
+          "mean": 254.0,
+          "median": 254.0,
+          "p25": 254.0,
+          "p75": 254.0
+        },
+        "dttl": {
+          "mean": 125.0827,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 252.0
+        },
+        "sloss": {
+          "mean": 0.9921,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 2.0
+        },
+        "dloss": {
+          "mean": 0.4964,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 1.0
+        },
+        "sload": {
+          "mean": 130465101.6158,
+          "median": 31384616.0,
+          "p25": 10453.0435,
+          "p75": 156222216.0
+        },
+        "dload": {
+          "mean": 2374.1472,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 4153.5088
+        },
+        "spkts": {
+          "mean": 5.9649,
+          "median": 2.0,
+          "p25": 2.0,
+          "p75": 10.0
+        },
+        "dpkts": {
+          "mean": 3.2892,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 6.0
+        },
+        "swin": {
+          "mean": 126.5718,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 255.0
+        },
+        "smean": {
+          "mean": 122.7399,
+          "median": 87.0,
+          "p25": 62.0,
+          "p75": 128.0
+        },
+        "dmean": {
+          "mean": 22.1813,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 45.0
+        },
+        "trans_depth": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "response_body_len": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "sjit": {
+          "mean": 2348.0625,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 2926.3648
+        },
+        "djit": {
+          "mean": 88.4211,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 118.9704
+        },
+        "sinpkt": {
+          "mean": 39.1104,
+          "median": 0.032,
+          "p25": 0.008,
+          "p75": 50.5179
+        },
+        "dinpkt": {
+          "mean": 54.5538,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 72.9559
+        },
+        "tcprtt": {
+          "mean": 0.0618,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.1124
+        },
+        "synack": {
+          "mean": 0.0294,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0575
+        },
+        "ackdat": {
+          "mean": 0.0323,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0558
+        },
+        "is_sm_ips_ports": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ct_state_ttl": {
+          "mean": 1.5056,
+          "median": 2.0,
+          "p25": 1.0,
+          "p75": 2.0
+        },
+        "ct_flw_http_mthd": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "is_ftp_login": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ct_ftp_cmd": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ct_srv_src": {
+          "mean": 2.3104,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 3.0
+        },
+        "ct_srv_dst": {
+          "mean": 1.5685,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 1.0
+        },
+        "ct_dst_ltm": {
+          "mean": 1.5857,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 1.0
+        },
+        "ct_src_ltm": {
+          "mean": 2.3428,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 2.0
+        },
+        "ct_src_dport_ltm": {
+          "mean": 1.0,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 1.0
+        },
+        "ct_dst_sport_ltm": {
+          "mean": 1.0,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 1.0
+        },
+        "ct_dst_src_ltm": {
+          "mean": 1.3534,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 1.0
+        },
+        "rate": {
+          "mean": 198273.2339,
+          "median": 62500.0,
+          "p25": 34.8327,
+          "p75": 250000.0
+        }
+      },
+      "categorical": {
+        "proto": {
+          "udp": 50.4,
+          "tcp": 49.6
+        },
+        "state": {
+          "int": 50.4,
+          "fin": 49.6,
+          "con": 0.1
+        },
+        "service": {
+          "-": 100.0
+        }
+      },
+      "signature": {
+        "decisive": [
+          {
+            "feature": "sttl",
+            "op": ">=",
+            "threshold": 142.5,
+            "attack_median": 254.0,
+            "normal_median": 31.0
+          },
+          {
+            "feature": "ct_state_ttl",
+            "op": ">=",
+            "threshold": 1.0,
+            "attack_median": 2.0,
+            "normal_median": 0.0
+          }
+        ],
+        "support": [
+          {
+            "feature": "swin",
+            "op": "<=",
+            "threshold": 127.5,
+            "attack_median": 0.0,
+            "normal_median": 255.0
+          },
+          {
+            "feature": "ct_src_ltm",
+            "op": "<=",
+            "threshold": 2.5,
+            "attack_median": 1.0,
+            "normal_median": 4.0
+          },
+          {
+            "feature": "ct_dst_ltm",
+            "op": "<=",
+            "threshold": 2.0,
+            "attack_median": 1.0,
+            "normal_median": 3.0
+          },
+          {
+            "feature": "ct_srv_dst",
+            "op": "<=",
+            "threshold": 2.5,
+            "attack_median": 1.0,
+            "normal_median": 4.0
+          },
+          {
+            "feature": "sloss",
+            "op": "<=",
+            "threshold": 2.0,
+            "attack_median": 0.0,
+            "normal_median": 4.0
+          },
+          {
+            "feature": "ct_srv_src",
+            "op": "<=",
+            "threshold": 3.0,
+            "attack_median": 1.0,
+            "normal_median": 5.0
+          }
+        ]
+      },
+      "reconciliation_with_md": "Định nghĩa bi.md đúng theo R1. Nhưng mô tả reverse-shell (dpkts/dload/response_body_len tăng vọt) KHÔNG xuất hiện trong flow thật của lớp Shellcode (dbytes=0, dpkts=0, body=0, service='-' 100%). R3 lưu Shellcode chồng lấn Normal → khó tách. Baseline dùng số thật. || [chi tiết định lượng] KHÁC bi.md ở điểm cốt lõi: bi.md mô tả 'kết nối HOÀN CHỈNH + đảo chiều lưu lượng (dpkts/dmean/dload tăng vọt = reverse shell) + response_body_len bất thường'. THỰC TẾ trong NB15: sttl=254, state INT/FIN ~50/50, dbytes median 0, dpkts median 0, response_body_len=0, service='-' 100%. KHÔNG thấy reverse-shell signature trong dữ liệu. => Mô tả bi.md mang tính lý thuyết tấn công, KHÔNG phản ánh flow thật của lớp Shellcode trong NB15.",
+      "documented_definition": "R1: 'A small piece of code used as the payload in the exploitation of a software vulnerability'.",
+      "definition_source": "Moustafa & Slay 2015 (R1)",
+      "verdict_vs_md": "DEF_CONFIRMED_behavior_not_in_flow"
+    },
+    "Worms": {
+      "count": 174,
+      "share_pct": 0.007,
+      "profile_numeric": {
+        "dur": {
+          "mean": 1.3333,
+          "median": 0.5487,
+          "p25": 0.2604,
+          "p75": 1.2376
+        },
+        "sbytes": {
+          "mean": 2255.7759,
+          "median": 1302.0,
+          "p25": 1292.0,
+          "p75": 1314.0
+        },
+        "dbytes": {
+          "mean": 76965.4655,
+          "median": 268.0,
+          "p25": 268.0,
+          "p75": 354.0
+        },
+        "sttl": {
+          "mean": 249.5862,
+          "median": 254.0,
+          "p25": 254.0,
+          "p75": 254.0
+        },
+        "dttl": {
+          "mean": 221.5862,
+          "median": 252.0,
+          "p25": 252.0,
+          "p75": 252.0
+        },
+        "sloss": {
+          "mean": 2.0115,
+          "median": 2.0,
+          "p25": 2.0,
+          "p75": 2.0
+        },
+        "dloss": {
+          "mean": 29.477,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 1.0
+        },
+        "sload": {
+          "mean": 72698643.0203,
+          "median": 16702.292,
+          "p25": 7657.3234,
+          "p75": 37128.9121
+        },
+        "dload": {
+          "mean": 132759.3517,
+          "median": 3918.9023,
+          "p25": 2102.4014,
+          "p75": 7384.3552
+        },
+        "spkts": {
+          "mean": 18.2184,
+          "median": 10.0,
+          "p25": 10.0,
+          "p75": 10.0
+        },
+        "dpkts": {
+          "mean": 62.931,
+          "median": 6.0,
+          "p25": 6.0,
+          "p75": 8.0
+        },
+        "swin": {
+          "mean": 224.2241,
+          "median": 255.0,
+          "p25": 255.0,
+          "p75": 255.0
+        },
+        "smean": {
+          "mean": 183.2644,
+          "median": 130.0,
+          "p25": 101.25,
+          "p75": 131.0
+        },
+        "dmean": {
+          "mean": 245.6954,
+          "median": 45.0,
+          "p25": 44.0,
+          "p75": 45.0
+        },
+        "trans_depth": {
+          "mean": 0.7471,
+          "median": 1.0,
+          "p25": 0.25,
+          "p75": 1.0
+        },
+        "response_body_len": {
+          "mean": 33377.0977,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "sjit": {
+          "mean": 4197.431,
+          "median": 2841.2783,
+          "p25": 1451.9731,
+          "p75": 4391.9665
+        },
+        "djit": {
+          "mean": 397.3318,
+          "median": 133.6403,
+          "p25": 68.9371,
+          "p75": 287.0994
+        },
+        "sinpkt": {
+          "mean": 71.8845,
+          "median": 55.0361,
+          "p25": 26.3708,
+          "p75": 81.0544
+        },
+        "dinpkt": {
+          "mean": 85.6693,
+          "median": 56.73,
+          "p25": 14.9986,
+          "p75": 103.2167
+        },
+        "tcprtt": {
+          "mean": 0.1214,
+          "median": 0.1293,
+          "p25": 0.0687,
+          "p75": 0.1644
+        },
+        "synack": {
+          "mean": 0.0594,
+          "median": 0.0632,
+          "p25": 0.0252,
+          "p75": 0.0852
+        },
+        "ackdat": {
+          "mean": 0.062,
+          "median": 0.0597,
+          "p25": 0.0443,
+          "p75": 0.0825
+        },
+        "is_sm_ips_ports": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ct_state_ttl": {
+          "mean": 1.1092,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 1.0
+        },
+        "ct_flw_http_mthd": {
+          "mean": 1.0833,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 1.0
+        },
+        "is_ftp_login": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ct_ftp_cmd": {
+          "mean": 0.0,
+          "median": 0.0,
+          "p25": 0.0,
+          "p75": 0.0
+        },
+        "ct_srv_src": {
+          "mean": 1.5287,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 2.0
+        },
+        "ct_srv_dst": {
+          "mean": 1.3391,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 1.0
+        },
+        "ct_dst_ltm": {
+          "mean": 1.4253,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 1.0
+        },
+        "ct_src_ltm": {
+          "mean": 2.6149,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 2.0
+        },
+        "ct_src_dport_ltm": {
+          "mean": 1.0977,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 1.0
+        },
+        "ct_dst_sport_ltm": {
+          "mean": 1.0345,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 1.0
+        },
+        "ct_dst_src_ltm": {
+          "mean": 1.2241,
+          "median": 1.0,
+          "p25": 1.0,
+          "p75": 1.0
+        },
+        "rate": {
+          "mean": 41708.1429,
+          "median": 47.6093,
+          "p25": 24.7093,
+          "p75": 80.4697
+        }
+      },
+      "categorical": {
+        "proto": {
+          "tcp": 87.9,
+          "udp": 12.1
+        },
+        "state": {
+          "fin": 86.8,
+          "int": 12.1,
+          "con": 1.1
+        },
+        "service": {
+          "http": 85.1,
+          "-": 14.9
+        }
+      },
+      "signature": {
+        "decisive": [
+          {
+            "feature": "sttl",
+            "op": ">=",
+            "threshold": 142.5,
+            "attack_median": 254.0,
+            "normal_median": 31.0
+          },
+          {
+            "feature": "dttl",
+            "op": ">=",
+            "threshold": 140.5,
+            "attack_median": 252.0,
+            "normal_median": 29.0
+          },
+          {
+            "feature": "sinpkt",
+            "op": ">=",
+            "threshold": 27.7943,
+            "attack_median": 55.0361,
+            "normal_median": 0.5525
+          },
+          {
+            "feature": "sjit",
+            "op": ">=",
+            "threshold": 1432.5343,
+            "attack_median": 2841.2783,
+            "normal_median": 23.7903
+          },
+          {
+            "feature": "rate",
+            "op": "<=",
+            "threshold": 1754.3892,
+            "attack_median": 47.6093,
+            "normal_median": 3461.1692
+          },
+          {
+            "feature": "dinpkt",
+            "op": ">=",
+            "threshold": 28.6251,
+            "attack_median": 56.73,
+            "normal_median": 0.5203
+          },
+          {
+            "feature": "smean",
+            "op": ">=",
+            "threshold": 101.5,
+            "attack_median": 130.0,
+            "normal_median": 73.0
+          },
+          {
+            "feature": "ct_state_ttl",
+            "op": ">=",
+            "threshold": 0.5,
+            "attack_median": 1.0,
+            "normal_median": 0.0
+          }
+        ],
+        "support": [
+          {
+            "feature": "ct_flw_http_mthd",
+            "op": ">=",
+            "threshold": 0.5,
+            "attack_median": 1.0,
+            "normal_median": 0.0
+          },
+          {
+            "feature": "ct_src_ltm",
+            "op": "<=",
+            "threshold": 2.5,
+            "attack_median": 1.0,
+            "normal_median": 4.0
+          },
+          {
+            "feature": "djit",
+            "op": ">=",
+            "threshold": 74.5149,
+            "attack_median": 133.6403,
+            "normal_median": 15.3896
+          },
+          {
+            "feature": "ct_srv_src",
+            "op": "<=",
+            "threshold": 3.0,
+            "attack_median": 1.0,
+            "normal_median": 5.0
+          },
+          {
+            "feature": "ct_dst_ltm",
+            "op": "<=",
+            "threshold": 2.0,
+            "attack_median": 1.0,
+            "normal_median": 3.0
+          },
+          {
+            "feature": "sload",
+            "op": "<=",
+            "threshold": 288044.6148,
+            "attack_median": 16702.292,
+            "normal_median": 559386.9375
+          }
+        ]
+      },
+      "reconciliation_with_md": "Không có trong 3 file md. service=http 85%, response_body_len cao, chỉ 174 mẫu. || [chi tiết định lượng] Không có trong 3 file md. Profile thật: service=http 85%, state=FIN 87%, sttl=254/dttl=252, response_body_len mean cao (33k), số mẫu rất ít (174).",
+      "documented_definition": "R1: 'Attacker replicates itself to spread to other computers via network, relying on security failures'.",
+      "definition_source": "Moustafa & Slay 2015 (R1)",
+      "verdict_vs_md": "NOT_IN_MD"
+    }
+  },
+  "documentation_evidence": {
+    "note": "Baseline này suy ra trực tiếp từ dữ liệu thô UNSW-NB15 (nguồn gốc nhất). Các tài liệu dưới đây xác nhận định nghĩa lớp tấn công và đặc trưng phân biệt; số liệu giữ nguyên giá trị tính từ dataset vì đó chính là ground-truth.",
+    "references": {
+      "R1": "Moustafa, N. & Slay, J. (2015). UNSW-NB15: A Comprehensive Data Set for Network Intrusion Detection Systems. MilCIS 2015, IEEE. — Định nghĩa gốc 9 lớp tấn công + 49 feature.",
+      "R2": "Moustafa, N. & Slay, J. (2016). The Evaluation of Network Anomaly Detection Systems: Statistical analysis of the UNSW-NB15 data set and comparison with KDD99. Information Security Journal 25(1-3):18-31. — Phân tích thống kê đặc trưng.",
+      "R3": "Zoghi, Z. & Serpen, G. (2021/2024). UNSW-NB15 Computer Security Dataset: Analysis through Visualization. arXiv:2101.05067 / Security and Privacy. — Xác nhận số bản ghi từng lớp, Generic=65% attack, class imbalance & overlap (Shellcode chồng lấn Normal).",
+      "R4": "Moustafa, N. (2017). Designing an online and reliable statistical anomaly detection framework. PhD thesis, UNSW Canberra, Ch.3. — Chi tiết 12 thuật toán sinh feature.",
+      "R5": "Yin, Y. et al. (2023). IGRF-RFE: A Hybrid Feature Selection Method for MLP-based NID on UNSW-NB15. arXiv:2203.16365. — sttl & ct_state_ttl thuộc nhóm feature quan trọng nhất; xác nhận giảm 42→23 feature vẫn giữ chính xác.",
+      "DATA": "Tự tính trên 100%% UNSW-NB15_1..4.csv (2,540,047 bản ghi) — đối chiếu trùng khớp số bản ghi của R3."
+    },
+    "headline_findings": [
+      "GENERIC: R1 định nghĩa Generic = tấn công mật mã collision chống mọi block-cipher → tu.md (Generic=Brute Force) BỊ TÀI LIỆU BÁC BỎ. Dữ liệu thật (udp/dns/INT/sttl=254) khớp định nghĩa mật mã, không khớp brute-force.",
+      "sttl + ct_state_ttl: tài liệu (R2,R5 + khảo sát tương quan) xác nhận là 2 feature phân biệt mạnh nhất, tương quan ~90%% với nhãn → đúng signature data-derived.",
+      "bi.md: định nghĩa ĐỊNH TÍNH của Reconnaissance/Analysis/Shellcode khớp R1, nhưng SỐ LIỆU trong bi.md là minh họa, lệch định lượng → baseline thay bằng số thật (đã chứng minh bằng DATA).",
+      "Class overlap (R3): Backdoors/Analysis/DoS/Shellcode chồng lấn nhau và với Normal → luật ngưỡng đơn không đủ, cần ML đa biến."
+    ]
+  }
+}

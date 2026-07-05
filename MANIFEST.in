@@ -1,0 +1,7 @@
+include README.md
+include LICENSE
+include requirements.txt
+recursive-include scripts *.sh
+recursive-include core *.py
+recursive-include modules *.py
+recursive-include ui *.py

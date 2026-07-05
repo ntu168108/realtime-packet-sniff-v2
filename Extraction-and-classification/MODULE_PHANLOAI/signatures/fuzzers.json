@@ -1,0 +1,41 @@
+{
+  "class_name": "Fuzzers",
+  "display_name": "Fuzzers",
+  "description": "Fuzzing attack — gửi input ngẫu nhiên để tìm crash. Đặc trưng: dur ngắn, sbytes thấp, spkts thấp (gói tin rất nhỏ/ngắn), state thường INT hoặc REJ.",
+  "keep_columns": [
+    "src_mac", "dst_mac", "srcip", "dstip",
+    "sport", "dport", "ltime",
+    "sttl", "ct_state_ttl", "dttl",
+    "sbytes", "dbytes", "smean", "dmean",
+    "dur", "spkts", "dpkts",
+    "sloss", "dloss",
+    "ct_srv_src", "ct_srv_dst", "ct_dst_src_ltm",
+    "ct_src_dport_ltm",
+    "proto", "state", "service"
+  ],
+  "categorical_mode": {
+    "proto": ["tcp", "udp"],
+    "state": ["INT", "REJ", "RSTO", "RSTR"],
+    "service": ["-", "http", "dns"]
+  },
+  "signature": {
+    "decisive": [
+      { "feature": "spkts",  "op": "<=", "threshold": 5.0,  "attack_median": 2.0,  "normal_median": 14.0 },
+      { "feature": "sbytes", "op": "<=", "threshold": 200.0, "attack_median": 100.0, "normal_median": 1684.0 },
+      { "feature": "smean",  "op": "<=", "threshold": 50.0, "attack_median": 40.0, "normal_median": 73.0 },
+      { "feature": "dur",    "op": "<=", "threshold": 0.5,  "attack_median": 0.0,  "normal_median": 0.02 }
+    ],
+    "support": [
+      { "feature": "dttl",      "op": "<=", "threshold": 14.5,  "attack_median": 0.0, "normal_median": 29.0 },
+      { "feature": "ct_state_ttl", "op": ">=", "threshold": 1.0, "attack_median": 2.0, "normal_median": 0.0 },
+      { "feature": "dloss",     "op": "<=", "threshold": 5.0,   "attack_median": 0.0, "normal_median": 5.0 },
+      { "feature": "dbytes",    "op": "<=", "threshold": 100.0, "attack_median": 0.0, "normal_median": 2478.0 }
+    ]
+  },
+  "scoring": {
+    "weight_decisive": 10,
+    "weight_support": 3,
+    "min_decisive_required": 2,
+    "threshold": 30
+  }
+}

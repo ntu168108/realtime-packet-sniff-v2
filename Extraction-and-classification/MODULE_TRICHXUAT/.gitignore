@@ -1,0 +1,20 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Large files & Network Traffic
+*.pcap
+*.pcapng
+*.argus
+*.csv
+
+# Intermediate Zeek/Argus outputs
+zeek_logs/
+test_zeek/
+argus_temp.csv
+zeek_temp.csv
+
+# OS generated files
+.DS_Store
+Thumbs.db

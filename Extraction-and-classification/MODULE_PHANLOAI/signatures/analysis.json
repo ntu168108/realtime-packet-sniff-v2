@@ -1,0 +1,42 @@
+{
+  "class_name": "Analysis",
+  "display_name": "Analysis",
+  "description": "Analysis attack — port scan, vulnerability scan, SQL injection probe. Đặc trưng: sttl cao, ct_state_ttl cao, sbytes thấp (probe), response_body_len thấp.",
+  "keep_columns": [
+    "src_mac", "dst_mac", "srcip", "dstip",
+    "sport", "dport", "ltime",
+    "sttl", "ct_state_ttl", "dttl",
+    "sbytes", "dbytes", "smean", "dmean",
+    "dur", "spkts", "dpkts",
+    "sloss", "dloss",
+    "trans_depth", "response_body_len", "ct_flw_http_mthd",
+    "ct_srv_src", "ct_srv_dst", "ct_dst_src_ltm",
+    "ct_src_dport_ltm", "ct_dst_sport_ltm",
+    "proto", "state", "service"
+  ],
+  "categorical_mode": {
+    "proto": ["tcp"],
+    "state": ["INT", "REQ", "CON", "FIN"],
+    "service": ["http", "-", "ftp"]
+  },
+  "signature": {
+    "decisive": [
+      { "feature": "ct_state_ttl",     "op": ">=", "threshold": 1.0,   "attack_median": 3.0, "normal_median": 0.0 },
+      { "feature": "ct_flw_http_mthd", "op": ">=", "threshold": 0.5,   "attack_median": 2.0, "normal_median": 0.0 },
+      { "feature": "trans_depth",      "op": ">=", "threshold": 1.0,   "attack_median": 2.0, "normal_median": 0.0 },
+      { "feature": "sbytes",           "op": "<=", "threshold": 500.0, "attack_median": 200.0, "normal_median": 1684.0 }
+    ],
+    "support": [
+      { "feature": "response_body_len", "op": "<=", "threshold": 100.0, "attack_median": 0.0, "normal_median": 0.0 },
+      { "feature": "sttl",              "op": ">=", "threshold": 60.0,  "attack_median": 254.0, "normal_median": 31.0 },
+      { "feature": "dttl",              "op": "<=", "threshold": 29.0,  "attack_median": 0.0,   "normal_median": 29.0 },
+      { "feature": "dloss",             "op": "<=", "threshold": 5.0,   "attack_median": 0.0,   "normal_median": 5.0 }
+    ]
+  },
+  "scoring": {
+    "weight_decisive": 10,
+    "weight_support": 3,
+    "min_decisive_required": 2,
+    "threshold": 30
+  }
+}

@@ -1,0 +1,11 @@
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.9
+pyjwt>=2.8.0
+bcrypt>=4.1.0
+clickhouse-driver>=0.2.9
+kafka-python-ng>=2.2.3
+websockets>=12.0
+psutil>=5.9.0
+# Test client for integration tests (starlette 1.3+ testclient prefers httpx2 over httpx)
+httpx2>=2.5.0
