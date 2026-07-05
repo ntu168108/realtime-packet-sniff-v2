@@ -1,2 +1,2 @@
 # Web GUI deps are in sniff-web/requirements-web.txt (install separately for the sniff-web service).
-scapy>=2.5.0
+scapy>=2.7.0
