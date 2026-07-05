@@ -27,7 +27,7 @@ jobs:
           sudo apt-get install -y libpcap-dev tcpdump
       - name: Install Python deps
         run: |
-          pip install --break-system-packages -r requirements.txt -r sniff-web/requirements-web.txt
+          pip install --break-system-packages -r requirements.txt -r sniff-web/requirements-web.txt pytest
       - name: Run sniff-web backend tests
         working-directory: sniff-web
         run: pytest tests/integration_tests/ -v --ignore=tests/integration_tests/test_idempotency.py
