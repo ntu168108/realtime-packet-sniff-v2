@@ -1,9 +1,9 @@
 # Architecture
 
 This document is the long-form companion to the top-level
-[`README.md`](../README.md). It describes the SNIFF IDS pipeline in
-detail: the data flow, the on-the-wire segment format, the ClickHouse
-dedup contract, and the systemd service topology.
+[README](https://github.com/ntu168108/realtime-packet-sniff-v2/blob/main/README.md).
+It describes the SNIFF IDS pipeline in detail: the data flow, the on-the-wire
+segment format, the ClickHouse dedup contract, and the systemd service topology.
 
 ## High-level data flow
 
@@ -50,8 +50,8 @@ sequence → lock-free ring buffer → dispatcher thread → callbacks.
 ## Segment format
 
 A Kafka message value is a single binary blob produced by
-[`integration/pcap_segment.py`](../integration/pcap_segment.py) and consumed by
-the symmetric `parse_segment()`. Layout, big-endian length prefix:
+[`integration/pcap_segment.py`](https://github.com/ntu168108/realtime-packet-sniff-v2/blob/main/integration/pcap_segment.py)
+and consumed by the symmetric `parse_segment()`. Layout, big-endian length prefix:
 
 ```
 +----------------+----------------+----------------------------------+
@@ -122,8 +122,10 @@ the Kafka loop never crashes on a single bad segment.
 
 ## ClickHouse schema
 
-DDL lives in [`sql/clickhouse_init.sql`](../sql/clickhouse_init.sql). The
-schema is **generated** from [`integration/schema.py`](../integration/schema.py) —
+DDL lives in
+[`sql/clickhouse_init.sql`](https://github.com/ntu168108/realtime-packet-sniff-v2/blob/main/sql/clickhouse_init.sql).
+The schema is **generated** from
+[`integration/schema.py`](https://github.com/ntu168108/realtime-packet-sniff-v2/blob/main/integration/schema.py) —
 do not hand-edit column types.
 
 ### Per-family tables
@@ -216,7 +218,8 @@ Five services run on the lab host:
       grafana-server.service   (external, reads ClickHouse)
 ```
 
-Per the unit files in [`deploy/systemd/`](../deploy/systemd):
+Per the unit files in
+[`deploy/systemd/`](https://github.com/ntu168108/realtime-packet-sniff-v2/tree/main/deploy/systemd):
 
 - **`kafka.service`** — single-broker KRaft, started after `network.target`.
 - **`sniff-producer.service`** — `Requires=kafka.service`,
@@ -273,8 +276,8 @@ sudo journalctl -u ec-consumer --no-pager | grep -E "heartbeat|FAILED|segment="
 |               | `log.retention.bytes=2147483648` (2 GiB/part)    | or edit `deploy/kafka/server.properties` + restart     |
 | ClickHouse    | `TTL toDateTime(ts) + INTERVAL 14 DAY`           | Edit `sql/clickhouse_init.sql` + `ALTER TABLE`         |
 
-See [`docs/OPERATIONS.md`](OPERATIONS.md) §7 for the exact commands to
-inspect and tune these values.
+For the exact commands to inspect and tune these values, see
+[Day-to-Day operations in Deployment](deployment.md#day-to-day-operations).
 
 ## Operational notes
 
@@ -293,7 +296,7 @@ inspect and tune these values.
 
 For day-2 operations (status checks, traffic replay with `tcpreplay`,
 Grafana URL, ClickHouse queries, log filtering) see
-[`docs/OPERATIONS.md`](OPERATIONS.md).
+[Deployment](deployment.md).
 
 ## Web GUI
 

@@ -1,0 +1,80 @@
+site_name: realtime-packet-sniff
+site_url: https://ntu168108.github.io/realtime-packet-sniff-v2/
+repo_url: https://github.com/ntu168108/realtime-packet-sniff-v2
+repo_name: ntu168108/realtime-packet-sniff-v2
+docs_dir: docs
+site_dir: site
+
+theme:
+  name: material
+  features:
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+  language: en
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  - i18n:
+      docs_structure: suffix
+      languages:
+        - locale: en
+          name: English
+          default: true
+          build: true
+        - locale: vi
+          name: Tiếng Việt
+          build: true
+          nav_translations:
+            Home: Trang chủ
+            Getting started: Bắt đầu
+            Quickstart: Khởi động nhanh
+            Installation: Cài đặt
+            Configuration: Cấu hình
+            Operations: Vận hành
+            Deployment: Triển khai
+            Architecture: Kiến trúc
+            Troubleshooting: Xử lý sự cố
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Quickstart: getting-started/quickstart.md
+      - Installation: getting-started/installation.md
+      - Configuration: getting-started/configuration.md
+  - Operations:
+      - Deployment: operations/deployment.md
+      - Architecture: operations/architecture.md
+      - Troubleshooting: operations/troubleshooting.md

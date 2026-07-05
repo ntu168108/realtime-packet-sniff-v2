@@ -1,0 +1,457 @@
+# Triển khai & vận hành — realtime-packet-sniff IDS
+
+## Bước 7 — Cấu hình pipeline
+
+### 7.1 Tạo file `config.yaml`
+
+```bash
+cp config.yaml.example config.yaml
+```
+
+Chỉnh các giá trị sau trong `config.yaml`:
+
+```yaml
+capture:
+  interface: ens33          # ← thay bằng tên interface thực tế của bạn
+  bpf: "not port 22"        # loại SSH ra để không nhiễu log
+  keep_local_pcap: false    # true nếu muốn giữ file pcap sau khi xử lý
+
+kafka:
+  bootstrap: localhost:9092
+  topic: raw_pcap_segments
+  segment_seconds: 60       # gom packet trong 60 giây rồi flush
+  segment_max_bytes: 67108864  # hoặc flush sớm nếu vượt 64 MB
+
+clickhouse:
+  host: localhost
+  port: 9000
+  database: network_ids
+  batch_size: 10000         # số dòng mỗi lần INSERT
+```
+
+### 7.2 Kiểm tra đường dẫn EC
+
+```bash
+# Pipeline cần biết thư mục Extraction-and-classification nằm ở đâu
+# Mặc định: tự tìm ở <repo>/Extraction-and-classification (đúng trong hầu hết trường hợp)
+# Nếu clone ở vị trí khác, đặt biến môi trường:
+export NB15_EC=/đường/dẫn/tới/Extraction-and-classification
+```
+
+---
+
+## Bước 8 — Khởi tạo schema ClickHouse
+
+```bash
+# Tạo database và 9 bảng (7 flows_<family> + flows_all + pipeline_runs)
+clickhouse-client --multiquery < sql/clickhouse_init.sql
+
+# Kiểm tra bảng đã tạo
+clickhouse-client --query "SHOW TABLES FROM network_ids"
+```
+
+Kết quả mong đợi:
+
+```
+flows_all
+flows_analysis
+flows_dos
+flows_exploits
+flows_fuzzers
+flows_generic
+flows_reconnaissance
+flows_shellcode
+pipeline_runs
+```
+
+> **Giải thích schema:**
+> - `flows_<family>` dùng engine `ReplacingMergeTree` — cho phép ghi lại cùng một segment mà không bị nhân đôi dữ liệu (idempotent re-processing).
+> - `flows_all` là Merge view — cho phép query tất cả 7 bảng cùng lúc.
+> - `pipeline_runs` ghi audit mỗi segment: thời gian chạy, số flow, lỗi nếu có.
+> - TTL mặc định: **14 ngày** — dữ liệu cũ hơn tự động xóa.
+
+---
+
+## Bước 9 — Cài systemd services
+
+### 9.1 Sao chép unit files
+
+```bash
+sudo cp deploy/systemd/kafka.service           /etc/systemd/system/
+sudo cp deploy/systemd/sniff-producer.service  /etc/systemd/system/
+sudo cp deploy/systemd/ec-consumer.service     /etc/systemd/system/
+```
+
+### 9.2 Chỉnh đường dẫn trong unit files
+
+Mở từng file và thay `WorkingDirectory` + `ExecStart` cho khớp với đường dẫn thực tế:
+
+```bash
+REPO_DIR=$(pwd)   # phải chạy trong thư mục repo
+
+# Thay đường dẫn trong cả 3 file
+sudo sed -i "s|/home/tu/realtime-packet-sniff|${REPO_DIR}|g" \
+    /etc/systemd/system/kafka.service \
+    /etc/systemd/system/sniff-producer.service \
+    /etc/systemd/system/ec-consumer.service
+
+# Thay tên user trong ec-consumer.service (service này chạy không cần root)
+sudo sed -i "s|User=tu|User=${USER}|g" /etc/systemd/system/ec-consumer.service
+
+# Thêm PYTHONPATH để systemd tìm thấy packages đã cài với --break-system-packages
+PYPATH=$(python3 -c "import site; print(site.getusersitepackages())")
+sudo sed -i "s|Environment=PYTHONPATH=.*|Environment=PYTHONPATH=${PYPATH}|g" \
+    /etc/systemd/system/sniff-producer.service \
+    /etc/systemd/system/ec-consumer.service
+```
+
+### 9.3 Nội dung 3 unit files (để tham chiếu)
+
+**`kafka.service`** — Kafka KRaft broker:
+```ini
+[Unit]
+Description=Apache Kafka (KRaft)
+After=network.target
+
+[Service]
+ExecStart=/opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/server.properties
+ExecStop=/opt/kafka/bin/kafka-server-stop.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**`sniff-producer.service`** — Capture + đẩy lên Kafka (cần root vì raw socket):
+```ini
+[Unit]
+Description=SNIFF Packet Producer
+After=network.target kafka.service
+Requires=kafka.service
+
+[Service]
+User=root
+WorkingDirectory=/home/tu/realtime-packet-sniff
+Environment=PYTHONPATH=/home/tu/.local/lib/python3.12/site-packages
+ExecStart=/usr/bin/python3 -m integration.run_producer
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**`ec-consumer.service`** — Đọc Kafka → Argus+Zeek → ClickHouse:
+```ini
+[Unit]
+Description=SNIFF EC Consumer (Extract + Classify)
+After=network.target kafka.service clickhouse-server.service
+Requires=kafka.service
+
+[Service]
+User=tu
+WorkingDirectory=/home/tu/realtime-packet-sniff
+Environment=PYTHONPATH=/home/tu/.local/lib/python3.12/site-packages
+ExecStart=/usr/bin/python3 -m integration.ec_consumer
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### 9.4 Reload và enable
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable kafka sniff-producer ec-consumer
+```
+
+---
+
+## Bước 10 — Khởi động & kiểm tra
+
+### 10.1 Khởi động theo thứ tự
+
+```bash
+# 1. Kafka phải chạy trước
+sudo systemctl start kafka
+sleep 5
+sudo systemctl status kafka
+
+# 2. Sau đó chạy producer
+sudo systemctl start sniff-producer
+sleep 3
+sudo systemctl status sniff-producer
+
+# 3. Cuối cùng chạy consumer (cần ClickHouse đã sẵn sàng)
+sudo systemctl start ec-consumer
+sudo systemctl status ec-consumer
+```
+
+### 10.2 Kiểm tra toàn bộ stack
+
+```bash
+# Xem trạng thái tất cả cùng lúc
+sudo systemctl is-active kafka sniff-producer ec-consumer clickhouse-server grafana-server
+# Kết quả mong đợi: active active active active active
+
+# Xem log ec-consumer realtime
+sudo journalctl -u ec-consumer -f
+```
+
+### 10.3 Test bằng cách replay traffic mẫu
+
+```bash
+# Capture 30 giây thử
+sudo tcpdump -i ens33 -w /tmp/test.pcap -G 30 -W 1
+
+# Hoặc nếu có file pcap có sẵn
+sudo tcpreplay -i ens33 --mbps=10 /đường/dẫn/file.pcap
+```
+
+Sau ~90 giây (60s segment + thời gian xử lý), kiểm tra dữ liệu:
+
+```bash
+# Kafka: số message đã publish
+/opt/kafka/bin/kafka-run-class.sh kafka.tools.GetOffsetShell \
+    --broker-list localhost:9092 --topic raw_pcap_segments
+
+# ClickHouse: tổng số flow đã ghi
+clickhouse-client --query "SELECT count() FROM network_ids.flows_all"
+
+# Xem phân bố theo họ tấn công
+clickhouse-client --query \
+    "SELECT attack_family, count() AS so_luong
+     FROM network_ids.flows_all
+     WHERE is_attack = 1
+     GROUP BY attack_family
+     ORDER BY so_luong DESC"
+
+# Xem pipeline health
+clickhouse-client --query \
+    "SELECT started_at, status, total_flows, duration_sec, error_msg
+     FROM network_ids.pipeline_runs
+     ORDER BY started_at DESC LIMIT 5"
+```
+
+### 10.4 Kiểm tra Grafana
+
+Mở trình duyệt: `http://<IP-máy-chủ>:3000`
+- Đăng nhập: `admin` / `admin`
+- Vào **Dashboards → IDS → "SNIFF IDS Pipeline"**
+- Nếu dashboard trống, chờ thêm 1-2 phút và nhấn **Refresh**
+
+---
+
+## Vận hành hàng ngày
+
+### Khởi động / dừng / restart
+
+```bash
+# Khởi động tất cả
+sudo systemctl start kafka sniff-producer ec-consumer
+
+# Dừng tất cả
+sudo systemctl stop ec-consumer sniff-producer kafka
+
+# Restart ec-consumer sau khi đổi code
+sudo systemctl restart ec-consumer
+```
+
+### Xem log
+
+```bash
+# Theo dõi realtime
+sudo journalctl -u ec-consumer -f
+
+# Lọc lỗi
+sudo journalctl -u ec-consumer --no-pager | grep -E "ERROR|FAILED|segment="
+
+# Xem 50 dòng gần nhất của producer
+sudo journalctl -u sniff-producer -n 50 --no-pager
+```
+
+### Query ClickHouse hữu ích
+
+```sql
+-- Tổng số flow theo gia đình tấn công
+SELECT attack_family, count() AS c
+FROM network_ids.flows_all
+WHERE is_attack = 1
+GROUP BY attack_family ORDER BY c DESC;
+
+-- Top 10 IP tấn công
+SELECT srcip, count() AS c
+FROM network_ids.flows_all
+WHERE is_attack = 1
+GROUP BY srcip ORDER BY c DESC LIMIT 10;
+
+-- Timeline tấn công (mỗi phút)
+SELECT toStartOfMinute(ts) AS t, attack_family, count() AS c
+FROM network_ids.flows_all
+WHERE is_attack = 1
+GROUP BY t, attack_family ORDER BY t;
+
+-- Kiểm tra pipeline health
+SELECT started_at, status, total_flows, duration_sec, error_msg
+FROM network_ids.pipeline_runs
+ORDER BY started_at DESC LIMIT 10;
+```
+
+### Chạy test bộ phân loại thủ công
+
+```bash
+cd Extraction-and-classification
+
+# Test toàn bộ 7 filter
+python3 -m pytest MODULE_PHANLOAI/tests/ -v
+
+# Chạy pipeline thủ công trên 1 file pcap
+python3 MODULE_AUTO/auto_pipeline.py /đường/dẫn/file.pcap
+
+# Chạy DoS classifier riêng lẻ
+python3 MODULE_PHANLOAI/dos_classifier.py \
+    --csv CSV/CSV_Full_feature/ten_file_dos_features.csv \
+    --skip-filter
+```
+
+---
+
+## Bước 11 — Cài Web GUI (sniff-web)
+
+> Bước bổ sung tùy chọn, không cần thiết cho hệ thống IDS đã chạy ở Bước 10.
+> Web GUI cho phép điều khiển capture + 5 services từ trình duyệt.
+>
+> 🎯 **Bản mới (zero-touch):** Sau khi chạy xong `install_web.sh`, có thể mở trình
+> duyệt ngay tại `http://<server>:8000` và đăng nhập với `admin / sniff` — không
+> cần chạy thêm bất kỳ lệnh nào.
+>
+> **Các lỗi đã sửa (qua các commit trước):**
+> 1. `install_web.sh` hardcode user `tu` → fail trên mọi user khác
+> 2. Script chạy `npm install` mà không kiểm tra Node.js → fail trên Ubuntu server thuần
+> 3. Unit file dùng module `sniff-web.web_server:app` → Python không import được
+> 4. PYTHONPATH hardcode → chỉ đúng 1 máy
+> 5. Frontend build không verify → UI 404
+> 6. **`config.yaml.example` có `web:` ở sai indent** → parser thấy `capture.web` thay vì top-level `web`, login luôn 401 ngay cả khi hash đúng (FIX trong bản này)
+> 7. **Script không tự tạo `config.yaml`** với bcrypt hash thật → fresh install phải tự chạy thêm lệnh gen hash (FIX trong bản này)
+
+### 11.1 Yêu cầu trước khi cài
+
+| Thành phần | Phiên bản tối thiểu | Lý do |
+|------------|----------------------|--------|
+| Python | 3.10+ | đã cài ở Bước 2 |
+| Node.js | **18+** (vite 5 không chạy trên Node 12) | build React frontend |
+| npm | 9+ | kèm theo Node 18+ |
+| disk trống | 800 MB | node_modules (~500MB) + frontend build |
+
+### 11.2 Cài Web GUI
+
+```bash
+sudo bash sniff-web/scripts/install_web.sh
+```
+
+Lệnh này chạy **8 bước idempotent** (chạy lại không hỏng):
+
+1. **Python deps**: cài `sniff-web/requirements-web.txt` với `--break-system-packages`
+   trên Ubuntu 24.04 và `--ignore-installed` để tránh xung đột với PyJWT do apt cài.
+2. **Node + frontend**: tự cài Node.js nếu thiếu (apt hoặc NodeSource 20.x);
+   build `sniff-web/web/dist/` qua `npm run build`. **Verify** `dist/index.html` tồn tại.
+3. **setcap**: `cap_net_admin,cap_net_raw+ep` cho `/usr/bin/python3` (resolve symlink).
+4. **sudoers**: cài `/etc/sudoers.d/sniff-web`. Patch user `tu` → `${SUDO_USER}`. Validate
+   qua `visudo -c` trước khi copy.
+5. **systemd unit**: render `sniff-web.service`. Patch repo path, user, PYTHONPATH.
+   `ExecStart=... uvicorn web_server:app ...` (đã fix từ `sniff-web.web_server:app`).
+6. **config.yaml**: nếu chưa có → copy từ example + generate bcrypt hash cho password
+   mặc định `sniff` + random JWT secret. Nếu đã có hash thật → giữ nguyên (preserve
+   user customizations). Chown user, mode 0640.
+7. **state + log dirs + logrotate**: tạo `/var/lib/sniff-web/` và `/var/log/sniff-web/`,
+   cài `/etc/logrotate.d/sniff-web` (rotate daily, giữ 7 ngày, compress).
+8. **enable + start**: `systemctl enable + restart sniff-web`, đợi 2s, báo RUNNING/FAILED.
+
+Output cuối:
+
+```
+===============================================
+  sniff-web install: RUNNING
+===============================================
+URL:      http://192.168.1.93:8000
+Username: admin
+Password: sniff  (CHANGE IMMEDIATELY in config.yaml)
+```
+
+### 11.3 Mở Web GUI
+
+**Mở trình duyệt:** `http://<server>:8000` — đăng nhập `admin` / `sniff` (đổi pass ngay
+trong UI hoặc bằng lệnh ở mục 11.5).
+
+**Tự khởi động capture sau reboot:** Bấm Start trong UI với checkbox "auto-restore
+on reboot". Config được lưu vào `/var/lib/sniff-web/last_capture.json`; lifespan
+startup đọc và tự restart capture.
+
+### 11.4 Lỗi thường gặp & fix
+
+| Triệu chứng | Nguyên nhân | Cách sửa |
+|-------------|-------------|----------|
+| `ModuleNotFoundError: No module named 'sniff-web.web_server'` | Phiên bản cũ | Re-run `sudo bash sniff-web/scripts/install_web.sh` |
+| `npm: command not found` | Ubuntu server không có node | Re-run script — tự cài Node 18+ |
+| `vite build` fail vì Node < 18 | Ubuntu 22.04 mặc định Node 12 | Re-run script — tự nâng lên NodeSource 20.x |
+| Service start xong nhưng UI trả 404 | Frontend build thiếu | Re-run script — verify `dist/index.html` |
+| `chown: invalid user: 'tu:tu'` | User không phải `tu` | Re-run script — dùng `${SUDO_USER}` thực |
+| Login 401 với `admin/sniff` ngay sau install | `config.yaml` không có hash thật | Re-run script — bản mới auto-generate |
+| `setcap: Invalid file '/usr/bin/python3'` | Symlink | Re-run script — fix realpath |
+
+### 11.5 Đổi mật khẩu admin
+
+```bash
+# Cách 1: qua UI — vào Settings → Change password (dễ nhất)
+
+# Cách 2: qua CLI
+NEW_HASH=$(python3 -c "import bcrypt; print(bcrypt.hashpw(b'MAT_KHAU_MOI', bcrypt.gensalt()).decode())")
+python3 -c "
+import yaml
+with open('config.yaml') as f:
+    cfg = yaml.safe_load(f) or {}
+cfg.setdefault('web', {})['password_hash'] = '$NEW_HASH'
+with open('config.yaml', 'w') as f:
+    yaml.safe_dump(cfg, f, default_flow_style=False, sort_keys=False)
+"
+sudo systemctl restart sniff-web
+```
+
+Xem `sniff-web/docs/WEB_GUI.md` để biết chi tiết API và UI.
+
+---
+
+## Cấu trúc thư mục tham chiếu
+
+```
+realtime-packet-sniff-v2/
+├── sniff.py                    # Entry point CLI capture tool
+├── install.sh                  # Installer 1 lệnh (capture tool)
+├── config.yaml.example         # Mẫu cấu hình → copy thành config.yaml
+├── requirements.txt            # Deps capture tool
+├── requirements-integration.txt # Deps pipeline IDS
+├── core/                       # Engine bắt gói tin (capture, decoder, buffer,...)
+├── cli/                        # TUI, daemon, live printer
+├── ui/                         # Màu sắc và helpers TUI
+├── modules/                    # Plugin analyzer (port scan, DNS tunnel, beaconing)
+├── integration/                # Kafka producer/consumer, ClickHouse sink, schema
+├── Extraction-and-classification/
+│   ├── MODULE_TRICHXUAT/       # Argus + Zeek → trích xuất đặc trưng UNSW-NB15
+│   ├── MODULE_PHANLOAI/        # 7 filter + dos_classifier + signatures
+│   └── MODULE_AUTO/            # Orchestrator auto_pipeline.py
+├── deploy/
+│   ├── systemd/                # Unit files: kafka, sniff-producer, ec-consumer
+│   ├── kafka/                  # server.properties (KRaft)
+│   └── grafana/                # datasource, dashboard provisioning
+├── sql/
+│   └── clickhouse_init.sql     # DDL tạo database và 9 bảng
+├── tests/integration_tests/    # 36 test tự động
+└── docs/
+    ├── index.md                # Trang chủ tiếng Anh
+    ├── getting-started/        # quickstart, installation, configuration
+    ├── operations/             # deployment, architecture, troubleshooting
+    └── vi/                     # Bản dịch tiếng Việt
+```
