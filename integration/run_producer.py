@@ -7,11 +7,13 @@ Dùng core.capture.CaptureEngine (đã có sẵn từ SNIFF). Callback API thự
 import logging
 import signal
 import sys
+import threading
 import time
 
 from kafka import KafkaProducer
 
 from .config import load_config
+from .dos_guard import DosGuard
 from .kafka_segmenter import KafkaPcapSegmenter
 
 
@@ -39,9 +41,20 @@ def main():
         cfg["capture"]["interface"],
         segment_seconds=cfg["kafka"]["segment_seconds"],
         segment_max_bytes=cfg["kafka"]["segment_max_bytes"],
+        segment_max_packets=cfg["kafka"].get("segment_max_packets", 100_000),
+    )
+
+    # Tự bảo vệ chống DoS: phát hiện flood qua pps, cắt tải bằng lấy mẫu 1/N.
+    guard = DosGuard(
+        trigger_pps=cfg["capture"].get("dos_trigger_pps", 50_000),
+        clear_pps=cfg["capture"].get("dos_clear_pps", 15_000),
+        target_pps=cfg["capture"].get("dos_target_pps", 10_000),
     )
 
     def on_pkt(pi):
+        # Khi bị DoS, guard.sample_every > 1 → chỉ giữ 1/N gói flood.
+        if not guard.should_keep(pi.stt):
+            return
         seg.add_packet(pi.ts_sec, pi.ts_usec, pi.data)
 
     # Late import: tránh scapy nạp khi chỉ cần config.
@@ -115,6 +128,30 @@ def main():
     )
 
     engine.start()
+
+    # Luồng nền 1Hz: đọc pps (CaptureEngine đã tính sẵn) → cập nhật DosGuard.
+    # Khi phát hiện flood, log cảnh báo kèm top-talkers để biết ai đang đánh.
+    def _dos_guard_loop():
+        was_active = False
+        while engine.is_running:
+            try:
+                pps = engine.get_status().get("pps", 0.0)
+                active = guard.update(pps)
+                if active:
+                    top = engine.get_top_conversations(5)
+                    seg_logger.warning(
+                        "DoS SUSPECTED pps=%.0f giu_1/%d top_talkers=%s",
+                        pps, guard.sample_every, top,
+                    )
+                elif was_active:
+                    seg_logger.info("DoS cleared pps=%.0f, thu day lai (1/1)", pps)
+                was_active = active
+            except Exception as exc:
+                logging.debug("dos_guard_loop: %s", exc)
+            time.sleep(1.0)
+
+    threading.Thread(target=_dos_guard_loop, daemon=True, name="dos-guard").start()
+
     # Sniffer chạy trong background; main thread chờ signal.
     signal.pause()
 
