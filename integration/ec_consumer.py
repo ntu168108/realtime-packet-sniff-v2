@@ -28,6 +28,30 @@ from .pcap_segment import parse_segment
 logger = logging.getLogger(__name__)
 
 
+class _SegmentAdapter:
+    """LoggerAdapter that injects `segment_id` into every record's `extra` dict.
+
+    Used to correlate per-segment Kafka messages in the journal without
+    repeating the segment_id on every log line.
+    """
+
+    def __init__(self, base_logger, extra: dict):
+        self._log = base_logger
+        self._extra = extra
+
+    def info(self, msg, *args, **kwargs):
+        self._log.info(msg, *args, extra=self._extra, **kwargs)
+
+    def error(self, msg, *args, **kwargs):
+        self._log.error(msg, *args, extra=self._extra, **kwargs)
+
+    def warning(self, msg, *args, **kwargs):
+        self._log.warning(msg, *args, extra=self._extra, **kwargs)
+
+    def debug(self, msg, *args, **kwargs):
+        self._log.debug(msg, *args, extra=self._extra, **kwargs)
+
+
 # Where to drop the temporary pcap. /dev/shm is ram-backed; fall back to
 # tempfile if unavailable (e.g. on macOS or restricted containers).
 SHM_DIR = Path("/dev/shm")
