@@ -82,7 +82,8 @@ class ClickHouseSink:
     """Batch insert per-family flows_<family> CSV rows into ClickHouse.
 
     Args:
-        cfg: dict with keys `host`, `port`, `database`, `batch_size`.
+        cfg: dict with keys `host`, `port`, `database`, `batch_size`,
+             optionally `user` and `password` for authenticated servers.
         client: optional injectable clickhouse_driver.Client (for tests).
     """
 
@@ -94,11 +95,17 @@ class ClickHouseSink:
         else:
             from clickhouse_driver import Client  # type: ignore
 
-            self.client = Client(
-                host=cfg["host"],
-                port=cfg["port"],
-                database=self.database,
-            )
+            client_kwargs: Dict[str, Any] = {
+                "host": cfg["host"],
+                "port": cfg["port"],
+                "database": self.database,
+            }
+            # Auth is optional — empty user/password works on default dev install.
+            if cfg.get("user"):
+                client_kwargs["user"] = cfg["user"]
+            if cfg.get("password"):
+                client_kwargs["password"] = cfg["password"]
+            self.client = Client(**client_kwargs)
 
     # ------------------------------------------------------------------
     def insert_family(self, family: str, csv_path: str, meta: Dict[str, Any]) -> int:
