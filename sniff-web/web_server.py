@@ -974,7 +974,8 @@ def query_clickhouse(sql: str, max_rows: int = 1000) -> dict:
     from clickhouse_driver import Client
     import time as _t
     # Resolve CH connection from web.integrations.clickhouse (or fall back to defaults).
-    ch_cfg = (CFG.get("web") or {}).get("integrations", {}).get("clickhouse", {})
+    web_cfg = load_web_config("config.yaml")
+    ch_cfg = (web_cfg.get("integrations") or {}).get("clickhouse") or {}
     url = ch_cfg.get("url", "http://localhost:8123")
     # Default native port 9000 unless host:port encoded in url.
     if "://" in url:
