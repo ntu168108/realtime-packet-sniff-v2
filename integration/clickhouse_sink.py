@@ -147,7 +147,9 @@ class ClickHouseSink:
             subtype = ""
             if "predicted_class" in r.index and pd.notna(r.get("predicted_class")):
                 subtype = str(r["predicted_class"]).strip()
-            is_attack = 1 if subtype else 0
+            # "Normal" (case-insensitive) is the only benign label; everything
+            # else is an attack. Empty subtype = unknown, treat as benign.
+            is_attack = 0 if subtype.lower() == "normal" else 1 if subtype else 0
             audit_values = [
                 ts,
                 str(meta.get("segment_id", "")),
