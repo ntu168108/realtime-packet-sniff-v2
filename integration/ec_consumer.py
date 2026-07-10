@@ -132,6 +132,13 @@ def default_runner(pcap_path):
                 # actually the dos family output. So we ALWAYS accept the match
                 # for fam=="dos" when the name ends with "_dos_features.csv".
                 name = p.name
+                # CHỈ nhận output CỦA CHÍNH segment này (neo theo stem pcap).
+                # Nếu không neo, glob "*_{fam}_features.csv" sẽ nhặt cả file mẫu
+                # sample_*_features.csv (hoặc output segment khác) nằm chung thư
+                # mục → fast-path bên dưới luôn đủ 7 file → auto_pipeline KHÔNG
+                # bao giờ chạy trên pcap thật. Đây là gốc rễ của "flow giả".
+                if not name.startswith(base + "_"):
+                    continue
                 if fam == "dos" and name.endswith("_dos_features.csv"):
                     cands.append(p)
                 elif fam != "dos" and name.endswith(f"_{fam}_features.csv"):

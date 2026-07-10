@@ -78,6 +78,26 @@ def _resolve_ts(row: pd.Series, now: datetime, segment_fallback: float | None = 
     return now
 
 
+_PLACEHOLDER_SRC_MACS = {"ff:ff:ff:ff:ff:ff", "00:00:00:00:00:00", ""}
+_ZERO_VOLUME_COLS = ("spkts", "dpkts", "sbytes", "dbytes", "dur")
+
+
+def _is_placeholder_row(r: pd.Series) -> bool:
+    """True nếu dòng là dữ liệu giả/bất khả thi → KHÔNG được nạp vào ClickHouse.
+
+    Bắt đúng chữ ký của bug 'flow giả': src_mac = broadcast/rỗng (không thể là
+    địa chỉ NGUỒN của gói thật) HOẶC toàn bộ chỉ số gói/byte/thời lượng = 0.
+    """
+    mac = str(r.get("src_mac", "")).strip().lower()
+    if mac in _PLACEHOLDER_SRC_MACS:
+        return True
+    try:
+        vol = sum(float(r.get(c, 0) or 0) for c in _ZERO_VOLUME_COLS)
+    except (TypeError, ValueError):
+        return False
+    return vol == 0
+
+
 class ClickHouseSink:
     """Batch insert per-family flows_<family> CSV rows into ClickHouse.
 
@@ -142,14 +162,24 @@ class ClickHouseSink:
 
         # Build rows.
         rows: List[List[Any]] = []
+        skipped = 0
         for _, r in df.iterrows():
+            # Guard chất lượng: loại dòng giả/bất khả thi (broadcast-src-MAC hoặc
+            # feature toàn 0). Nếu pipeline lại nạp dữ liệu mẫu, số này sẽ dựng lên.
+            if _is_placeholder_row(r):
+                skipped += 1
+                continue
             ts = _resolve_ts(r, now, segment_fallback)
             subtype = ""
             if "predicted_class" in r.index and pd.notna(r.get("predicted_class")):
                 subtype = str(r["predicted_class"]).strip()
+            # Không để nhãn RỖNG lọt vào DB (bug 7.800 dòng blank predicted_class):
+            # thiếu nhãn → coi là 'Normal' để cột luôn có giá trị xác định.
+            if not subtype:
+                subtype = "Normal"
             # "Normal" (case-insensitive) is the only benign label; everything
-            # else is an attack. Empty subtype = unknown, treat as benign.
-            is_attack = 0 if subtype.lower() == "normal" else 1 if subtype else 0
+            # else is an attack.
+            is_attack = 0 if subtype.lower() == "normal" else 1
             audit_values = [
                 ts,
                 str(meta.get("segment_id", "")),
@@ -166,6 +196,20 @@ class ClickHouseSink:
                 for c in CSV_COLUMNS
             ]
             rows.append(audit_values + feat_values)
+
+        if skipped:
+            logger.warning(
+                "insert_family family=%s: BỎ %d/%d dòng giả (broadcast-src-MAC "
+                "hoặc feature=0) — nghi ngờ pipeline nạp dữ liệu mẫu, segment_id=%s",
+                family, skipped, len(df), meta.get("segment_id", ""),
+            )
+        if not rows:
+            logger.error(
+                "insert_family family=%s: 0 dòng HỢP LỆ sau guard — KHÔNG nạp gì. "
+                "Kiểm tra khâu trích xuất (auto_pipeline chạy trên pcap thật chưa?).",
+                family,
+            )
+            return 0
 
         total = 0
         for i in range(0, len(rows), self.batch_size):

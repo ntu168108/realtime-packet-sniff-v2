@@ -2,6 +2,35 @@
 
 All notable changes to `realtime-packet-sniff-v2` are documented in this file.
 
+## [Unreleased] - fix/flow-gia-va-mat-goi
+
+### Fixed
+- **Flow giả trong ClickHouse** — trước đây mọi flow là dữ liệu mẫu synthetic
+  (`10.0.0.5→10.0.0.9`, `udp:53`, `src_mac=ff:ff:ff:ff:ff:ff`, feature toàn 0),
+  hoàn toàn không phải traffic bắt được.
+  - Bỏ 8 file mẫu `Extraction-and-classification/CSV/CSV_Full_feature/sample_*`
+    (bị consumer tái dùng) + gitignore output runtime.
+  - **`integration/ec_consumer.py`** — `default_runner._collect_outputs()` neo
+    theo stem của segment (`name.startswith(base + "_")`), không còn nhặt file
+    mẫu/segment khác qua fast-path.
+  - **`integration/clickhouse_sink.py`** — guard `_is_placeholder_row()` loại dòng
+    broadcast-src-MAC / feature=0; ép `predicted_class` rỗng → `Normal`; chặn nạp
+    khi 0 dòng hợp lệ.
+- **Mất ~60% gói khi tải cao** (đo bằng thiết bị bắt song song, tập trung ở burst).
+  - **`config.yaml.example`** — `buffer_profile: max`, `ring_buffer_size: 1048576`,
+    `batch_size: 1024`, `gc_interval: 0`.
+  - **`core/capture.py`** — `_update_drop_stats()` đọc đúng drop hàng đợi từ
+    `RingBuffer.dropped` (drop-oldest trước đây đếm thiếu vì `put_nowait()` luôn True).
+
+### Added
+- **`core/native_writer.py`** — `DumpcapWriter`: ghi PCAP bằng chứng qua `dumpcap`
+  (kernel buffer lớn) gần như không drop; phơi `drop_stats()` để giám sát.
+- **`integration/run_producer.py`** — gắn `DumpcapWriter` (tùy chọn qua
+  `capture.evidence_dumpcap`, hỏng thì bỏ qua, không chặn producer) + log
+  `evidence_drop` trong cảnh báo DoS.
+- Docs: khuyến nghị tinh chỉnh chống burst (`docs/getting-started/configuration.md`),
+  bước xóa CSV mẫu + truy vấn nghiệm thu chống flow-giả (`docs/operations/deployment.md`).
+
 ## [v1.1.0] - 2026-07-06
 
 ### Added
