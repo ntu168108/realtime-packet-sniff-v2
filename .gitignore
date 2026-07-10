@@ -90,3 +90,7 @@ config.yaml
 # OS
 .DS_Store
 Thumbs.db
+
+# Runtime feature-extraction outputs — KHÔNG commit (tránh bị consumer tái dùng làm flow giả)
+Extraction-and-classification/CSV/CSV_Full_feature/*.csv
+Extraction-and-classification/CSV/Filter_*/*.csv

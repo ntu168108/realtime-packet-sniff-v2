@@ -18,7 +18,9 @@ capture:
   promisc: true
 
   # Buffer profile: low | balanced | fast | max
-  buffer_profile: balanced
+  # Dùng 'max' (hoặc 'fast') cho môi trường có burst/DoS. 'balanced' để ring
+  # nhỏ → mất gói nặng khi tải cao (đo thực tế: mất 60% gói trong burst POST 100MB).
+  buffer_profile: max
 
   # ===== Storage =====
   output:
@@ -63,17 +65,20 @@ capture:
 
   # ===== Performance =====
   performance:
-    # Ring buffer size (số packets)
-    ring_buffer_size: 65536
+    # Ring buffer size (số packets). 65536 QUÁ NHỎ cho burst: ở ~25MB/s
+    # (POST 100MB) ring cạn <1s → drop-oldest mất gói. Tăng 16-64x.
+    ring_buffer_size: 1048576
 
-    # PCAP batch size (packets/batch)
-    batch_size: 256
+    # PCAP batch size (packets/batch). Batch lớn hơn → ít syscall ghi hơn,
+    # dispatcher drain ring nhanh hơn.
+    batch_size: 1024
 
     # Deep L7 decode (DNS/HTTP/TLS/...) - tốn CPU
     enable_deep_decode: false
 
-    # Periodic GC mỗi N giây
-    gc_interval: 30
+    # Periodic GC mỗi N giây. GC stop-the-world CHẶN luồng drain → tràn ring
+    # trong burst. Đặt 0 để tắt GC định kỳ trên hot path (hoặc để rất lớn).
+    gc_interval: 0
 
   # ===== Daemon =====
   daemon:
