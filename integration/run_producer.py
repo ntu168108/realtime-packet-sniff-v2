@@ -73,6 +73,34 @@ def main():
     hb_every_sec = 60.0
     seg_logger = logging.getLogger("producer")
 
+    # --- Bộ ghi PCAP bằng chứng qua dumpcap (chống mất gói khi tải cao) ---
+    # Nhánh Scapy -> RingBuffer -> dispatcher Python có thể drop trong burst
+    # (đo thực tế: mất 60% gói ở POST 100MB). dumpcap (C, libpcap trực tiếp,
+    # kernel buffer lớn) ghi file bằng chứng gần như không drop. Tùy chọn, hỏng
+    # thì bỏ qua để KHÔNG chặn producer.
+    evidence = None
+    if cfg["capture"].get("evidence_dumpcap", True):
+        try:
+            from core.native_writer import DumpcapWriter
+            _out = cfg["capture"].get("output", {}) or {}
+            evidence = DumpcapWriter(
+                interface=cfg["capture"]["interface"],
+                out_dir=_out.get("base_dir", "/var/lib/sniff-web/sniff_data"),
+                buffer_mb=int(cfg["capture"].get("evidence_buffer_mb", 512)),
+                ring_seconds=int(_out.get("rotate_interval", 3600)),
+                ring_filesize_kb=int(_out.get("max_file_size", 1073741824)) // 1024,
+                snaplen=int(cfg["capture"].get("snaplen", 0) or 0),
+                bpf_filter=cfg["capture"].get("bpf", ""),
+            )
+            evidence.start()
+            seg_logger.info("evidence dumpcap writer started -> %s", evidence.out_dir)
+        except Exception as exc:  # noqa: BLE001
+            seg_logger.warning(
+                "evidence dumpcap writer KHÔNG chạy được (bỏ qua, không chặn producer): %s",
+                exc,
+            )
+            evidence = None
+
     def _emit_heartbeat(force: bool = False) -> None:
         nonlocal t_last_hb, n_segments, n_pkts
         now_mono = time.monotonic()
@@ -104,6 +132,11 @@ def main():
             engine.stop()
         except Exception as exc:
             logging.error("engine.stop: %s", exc)
+        if evidence is not None:
+            try:
+                evidence.stop()
+            except Exception as exc:
+                logging.error("evidence.stop: %s", exc)
         try:
             sid = seg.flush()
             if sid:
@@ -139,9 +172,10 @@ def main():
                 active = guard.update(pps)
                 if active:
                     top = engine.get_top_conversations(5)
+                    ev = evidence.drop_stats() if evidence is not None else {}
                     seg_logger.warning(
-                        "DoS SUSPECTED pps=%.0f giu_1/%d top_talkers=%s",
-                        pps, guard.sample_every, top,
+                        "DoS SUSPECTED pps=%.0f giu_1/%d top_talkers=%s evidence_drop=%s",
+                        pps, guard.sample_every, top, ev,
                     )
                 elif was_active:
                     seg_logger.info("DoS cleared pps=%.0f, thu day lai (1/1)", pps)

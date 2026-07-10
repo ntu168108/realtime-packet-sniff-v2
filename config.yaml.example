@@ -22,6 +22,12 @@ capture:
   # nhỏ → mất gói nặng khi tải cao (đo thực tế: mất 60% gói trong burst POST 100MB).
   buffer_profile: max
 
+  # Bộ ghi PCAP bằng chứng qua dumpcap (chống mất gói khi tải cao — chỉ áp cho
+  # nhánh producer/pipeline). Cần cài Wireshark/tshark + cấp quyền:
+  #   sudo setcap cap_net_raw,cap_net_admin=eip $(which dumpcap)
+  evidence_dumpcap: true
+  evidence_buffer_mb: 512     # kernel capture buffer cho dumpcap (MiB)
+
   # ===== Storage =====
   output:
     # Thư mục gốc cho PCAP files. Phải nằm trong systemd ReadWritePaths=
