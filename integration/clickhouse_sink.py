@@ -78,24 +78,36 @@ def _resolve_ts(row: pd.Series, now: datetime, segment_fallback: float | None = 
     return now
 
 
-_PLACEHOLDER_SRC_MACS = {"ff:ff:ff:ff:ff:ff", "00:00:00:00:00:00", ""}
+# MAC nguồn = broadcast/all-zero là BẤT KHẢ THI cho gói thật → chữ ký flow giả.
+# Chú ý: src_mac RỖNG/THIẾU KHÔNG nằm ở đây — một CSV trích xuất thật có thể
+# không mang cột src_mac, và loại cả dòng chỉ vì thiếu cột sẽ âm thầm vứt flow
+# hợp lệ (đúng hợp đồng "tolerate missing columns" của sink).
+_BROADCAST_SRC_MACS = {"ff:ff:ff:ff:ff:ff", "00:00:00:00:00:00"}
 _ZERO_VOLUME_COLS = ("spkts", "dpkts", "sbytes", "dbytes", "dur")
 
 
 def _is_placeholder_row(r: pd.Series) -> bool:
     """True nếu dòng là dữ liệu giả/bất khả thi → KHÔNG được nạp vào ClickHouse.
 
-    Bắt đúng chữ ký của bug 'flow giả': src_mac = broadcast/rỗng (không thể là
-    địa chỉ NGUỒN của gói thật) HOẶC toàn bộ chỉ số gói/byte/thời lượng = 0.
+    Bắt đúng chữ ký của bug 'flow giả' mà KHÔNG loại nhầm CSV thưa (thiếu cột):
+
+    1. `src_mac` HIỆN DIỆN và là broadcast/all-zero (`ff:ff:..`/`00:00:..`) — địa
+       chỉ NGUỒN kiểu này bất khả thi với gói thật. Thiếu/rỗng src_mac KHÔNG bị
+       coi là giả (sink vốn phải chịu được CSV thiếu cột).
+    2. Toàn bộ cột volume (spkts/dpkts/sbytes/dbytes/dur) ĐỀU CÓ MẶT và = 0 —
+       flow rỗng, không mang traffic. Nếu các cột này vắng hẳn thì bỏ qua luật
+       này (không đủ căn cứ để kết luận giả).
     """
     mac = str(r.get("src_mac", "")).strip().lower()
-    if mac in _PLACEHOLDER_SRC_MACS:
+    if mac in _BROADCAST_SRC_MACS:
         return True
-    try:
-        vol = sum(float(r.get(c, 0) or 0) for c in _ZERO_VOLUME_COLS)
-    except (TypeError, ValueError):
-        return False
-    return vol == 0
+    if all(c in r.index for c in _ZERO_VOLUME_COLS):
+        try:
+            vol = sum(float(r.get(c, 0) or 0) for c in _ZERO_VOLUME_COLS)
+        except (TypeError, ValueError):
+            return False
+        return vol == 0
+    return False
 
 
 class ClickHouseSink:

@@ -16,6 +16,13 @@ All notable changes to `realtime-packet-sniff-v2` are documented in this file.
   - **`integration/clickhouse_sink.py`** — guard `_is_placeholder_row()` loại dòng
     broadcast-src-MAC / feature=0; ép `predicted_class` rỗng → `Normal`; chặn nạp
     khi 0 dòng hợp lệ.
+  - **Sửa guard loại nhầm CSV thưa (hồi quy CI):** phiên bản đầu coi `src_mac`
+    RỖNG/THIẾU và cột volume vắng mặt là "giả", làm rớt mọi dòng của CSV chỉ có
+    `srcip/dstip/sport` → 6 job Backend đỏ (`test_sink_handles_missing_columns`,
+    `test_sink_batches_large_csv`). Guard nay chỉ loại khi `src_mac` HIỆN DIỆN và
+    là broadcast/all-zero, hoặc toàn bộ cột volume ĐỀU CÓ và = 0; thiếu cột không
+    còn bị coi là giả (giữ đúng hợp đồng "tolerate missing columns" của sink).
+    Thêm test `test_sink_rejects_placeholder_fake_flows` khoá lại hành vi này.
 - **Mất ~60% gói khi tải cao** (đo bằng thiết bị bắt song song, tập trung ở burst).
   - **`config.yaml.example`** — `buffer_profile: max`, `ring_buffer_size: 1048576`,
     `batch_size: 1024`, `gc_interval: 0`.
