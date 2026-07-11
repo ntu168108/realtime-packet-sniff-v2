@@ -191,7 +191,7 @@ def run_zeek(pcap_file: str, work_dir: str) -> str:
             row = []
             uid = parts[uid_idx] if (uid_idx != -1 and uid_idx < len(parts)) else ""
             
-            for field in wanted_fields:
+            for field in csv_columns:
                 if field in new_fields:
                     val = "0" if field in new_fields_num else ""
                     if field in ("trans_depth", "res_bdy_len", "http_method") and uid in http_data:

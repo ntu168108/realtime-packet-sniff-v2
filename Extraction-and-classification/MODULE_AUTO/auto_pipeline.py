@@ -166,6 +166,8 @@ def process_pcap(pcap_path: str) -> bool:
 
         # --- Buoc 3: Chay 7 filter in-process ----------------------------
         logger.info("BUOC 3/4: Chay %d filter phan loai", len(FILTERS))
+        if str(MODULE_PHANLOAI) not in sys.path:
+            sys.path.insert(0, str(MODULE_PHANLOAI))
         from family_filter import run_family  # type: ignore
         failed_filters = []
         for i, class_name in enumerate(FILTERS, 1):

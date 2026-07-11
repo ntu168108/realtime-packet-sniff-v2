@@ -117,7 +117,8 @@ def default_runner(pcap_path):
         out = {}
         for fam in FAMILY_DIRS:
             cands = []
-            for p in full_feature_dir.glob(f"*_{fam}_features.csv"):
+            fam_dir = EC / "CSV" / FAMILY_DIRS[fam]
+            for p in fam_dir.glob(f"*_{fam}_features.csv"):
                 # For fam="dos": the pipeline writes "{base}_dos_features.csv" as
                 # the dos-family-filtered output. There is NO "_dos_features_dos_features.csv"
                 # for family=dos (it would be the dos-of-dos filter run, which the
