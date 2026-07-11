@@ -176,6 +176,37 @@ def test_sink_batches_large_csv(tmp_path):
     assert len(fake.execs[2]["rows"]) == 5
 
 
+def test_sink_rejects_placeholder_fake_flows(tmp_path):
+    """The quality guard still drops the 'flow giả' signature — a broadcast
+    src MAC (impossible as a source) and all-zero-volume rows — while keeping
+    a genuine flow that shares the same CSV. Absence of a src_mac column must
+    NOT, by itself, get a row dropped (see test_sink_handles_missing_columns)."""
+    csv = tmp_path / "mix_dos_features.csv"
+    df = pd.DataFrame(
+        {
+            "src_mac": ["ff:ff:ff:ff:ff:ff", "aa:bb:cc:dd:ee:ff", "aa:bb:cc:dd:ee:01"],
+            "srcip": ["10.0.0.5", "192.168.106.60", "10.0.0.5"],
+            "dstip": ["10.0.0.9", "192.168.101.135", "10.0.0.9"],
+            "sport": [1000, 40000, 1001],
+            "dport": [53, 80, 53],
+            "proto": ["udp", "tcp", "udp"],
+            "spkts": [0, 10, 0],
+            "dpkts": [0, 12, 0],
+            "sbytes": [0, 800, 0],
+            "dbytes": [0, 900, 0],
+            "dur": [0.0, 1.5, 0.0],
+        }
+    )
+    df.to_csv(csv, index=False)
+    sink, fake = _make_sink()
+    n = sink.insert_family("dos", str(csv), {"segment_id": "S6"})
+    # row0: broadcast-src-MAC -> dropped; row2: all-zero volume -> dropped;
+    # row1: real flow -> kept.
+    assert n == 1
+    assert len(fake.execs) == 1
+    assert len(fake.execs[0]["rows"]) == 1
+
+
 def test_sink_missing_file_returns_zero(tmp_path):
     sink, fake = _make_sink()
     n = sink.insert_family("dos", str(tmp_path / "no.csv"), {"segment_id": "S5"})
