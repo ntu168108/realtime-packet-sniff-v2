@@ -78,11 +78,44 @@ def _resolve_ts(row: pd.Series, now: datetime, segment_fallback: float | None = 
     return now
 
 
+# MAC nguồn = broadcast/all-zero là BẤT KHẢ THI cho gói thật → chữ ký flow giả.
+# Chú ý: src_mac RỖNG/THIẾU KHÔNG nằm ở đây — một CSV trích xuất thật có thể
+# không mang cột src_mac, và loại cả dòng chỉ vì thiếu cột sẽ âm thầm vứt flow
+# hợp lệ (đúng hợp đồng "tolerate missing columns" của sink).
+_BROADCAST_SRC_MACS = {"ff:ff:ff:ff:ff:ff", "00:00:00:00:00:00"}
+_ZERO_VOLUME_COLS = ("spkts", "dpkts", "sbytes", "dbytes", "dur")
+
+
+def _is_placeholder_row(r: pd.Series) -> bool:
+    """True nếu dòng là dữ liệu giả/bất khả thi → KHÔNG được nạp vào ClickHouse.
+
+    Bắt đúng chữ ký của bug 'flow giả' mà KHÔNG loại nhầm CSV thưa (thiếu cột):
+
+    1. `src_mac` HIỆN DIỆN và là broadcast/all-zero (`ff:ff:..`/`00:00:..`) — địa
+       chỉ NGUỒN kiểu này bất khả thi với gói thật. Thiếu/rỗng src_mac KHÔNG bị
+       coi là giả (sink vốn phải chịu được CSV thiếu cột).
+    2. Toàn bộ cột volume (spkts/dpkts/sbytes/dbytes/dur) ĐỀU CÓ MẶT và = 0 —
+       flow rỗng, không mang traffic. Nếu các cột này vắng hẳn thì bỏ qua luật
+       này (không đủ căn cứ để kết luận giả).
+    """
+    mac = str(r.get("src_mac", "")).strip().lower()
+    if mac in _BROADCAST_SRC_MACS:
+        return True
+    if all(c in r.index for c in _ZERO_VOLUME_COLS):
+        try:
+            vol = sum(float(r.get(c, 0) or 0) for c in _ZERO_VOLUME_COLS)
+        except (TypeError, ValueError):
+            return False
+        return vol == 0
+    return False
+
+
 class ClickHouseSink:
     """Batch insert per-family flows_<family> CSV rows into ClickHouse.
 
     Args:
-        cfg: dict with keys `host`, `port`, `database`, `batch_size`.
+        cfg: dict with keys `host`, `port`, `database`, `batch_size`,
+             optionally `user` and `password` for authenticated servers.
         client: optional injectable clickhouse_driver.Client (for tests).
     """
 
@@ -94,11 +127,17 @@ class ClickHouseSink:
         else:
             from clickhouse_driver import Client  # type: ignore
 
-            self.client = Client(
-                host=cfg["host"],
-                port=cfg["port"],
-                database=self.database,
-            )
+            client_kwargs: Dict[str, Any] = {
+                "host": cfg["host"],
+                "port": cfg["port"],
+                "database": self.database,
+            }
+            # Auth is optional — empty user/password works on default dev install.
+            if cfg.get("user"):
+                client_kwargs["user"] = cfg["user"]
+            if cfg.get("password"):
+                client_kwargs["password"] = cfg["password"]
+            self.client = Client(**client_kwargs)
 
     # ------------------------------------------------------------------
     def insert_family(self, family: str, csv_path: str, meta: Dict[str, Any]) -> int:
@@ -135,12 +174,24 @@ class ClickHouseSink:
 
         # Build rows.
         rows: List[List[Any]] = []
+        skipped = 0
         for _, r in df.iterrows():
+            # Guard chất lượng: loại dòng giả/bất khả thi (broadcast-src-MAC hoặc
+            # feature toàn 0). Nếu pipeline lại nạp dữ liệu mẫu, số này sẽ dựng lên.
+            if _is_placeholder_row(r):
+                skipped += 1
+                continue
             ts = _resolve_ts(r, now, segment_fallback)
             subtype = ""
             if "predicted_class" in r.index and pd.notna(r.get("predicted_class")):
                 subtype = str(r["predicted_class"]).strip()
-            is_attack = 1 if subtype else 0
+            # Không để nhãn RỖNG lọt vào DB (bug 7.800 dòng blank predicted_class):
+            # thiếu nhãn → coi là 'Normal' để cột luôn có giá trị xác định.
+            if not subtype:
+                subtype = "Normal"
+            # "Normal" (case-insensitive) is the only benign label; everything
+            # else is an attack.
+            is_attack = 0 if subtype.lower() == "normal" else 1
             audit_values = [
                 ts,
                 str(meta.get("segment_id", "")),
@@ -157,6 +208,20 @@ class ClickHouseSink:
                 for c in CSV_COLUMNS
             ]
             rows.append(audit_values + feat_values)
+
+        if skipped:
+            logger.warning(
+                "insert_family family=%s: BỎ %d/%d dòng giả (broadcast-src-MAC "
+                "hoặc feature=0) — nghi ngờ pipeline nạp dữ liệu mẫu, segment_id=%s",
+                family, skipped, len(df), meta.get("segment_id", ""),
+            )
+        if not rows:
+            logger.error(
+                "insert_family family=%s: 0 dòng HỢP LỆ sau guard — KHÔNG nạp gì. "
+                "Kiểm tra khâu trích xuất (auto_pipeline chạy trên pcap thật chưa?).",
+                family,
+            )
+            return 0
 
         total = 0
         for i in range(0, len(rows), self.batch_size):

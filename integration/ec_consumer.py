@@ -28,11 +28,42 @@ from .pcap_segment import parse_segment
 logger = logging.getLogger(__name__)
 
 
+class _SegmentAdapter:
+    """LoggerAdapter that injects `segment_id` into every record's `extra` dict.
+
+    Used to correlate per-segment Kafka messages in the journal without
+    repeating the segment_id on every log line.
+    """
+
+    def __init__(self, base_logger, extra: dict):
+        self._log = base_logger
+        self._extra = extra
+
+    def info(self, msg, *args, **kwargs):
+        self._log.info(msg, *args, extra=self._extra, **kwargs)
+
+    def error(self, msg, *args, **kwargs):
+        self._log.error(msg, *args, extra=self._extra, **kwargs)
+
+    def warning(self, msg, *args, **kwargs):
+        self._log.warning(msg, *args, extra=self._extra, **kwargs)
+
+    def debug(self, msg, *args, **kwargs):
+        self._log.debug(msg, *args, extra=self._extra, **kwargs)
+
+
 # Where to drop the temporary pcap. /dev/shm is ram-backed; fall back to
 # tempfile if unavailable (e.g. on macOS or restricted containers).
 SHM_DIR = Path("/dev/shm")
 if not (SHM_DIR.exists() and os.access(str(SHM_DIR), os.W_OK)):
     SHM_DIR = Path(tempfile.gettempdir())
+
+
+# Circuit breaker chống DoS: segment vượt số gói này bị coi là flood và BỎ QUA
+# bước trích xuất nặng (Argus/Zeek/pandas nạp cả CSV vào RAM → OOM cả host).
+# Chốt chặn cuối phòng khi segment lớn lọt qua trước khi DosGuard kịp cắt tải.
+# Override qua env EC_MAX_PKTS_PER_SEGMENT.
+MAX_PKTS_PER_SEGMENT = int(os.environ.get("EC_MAX_PKTS_PER_SEGMENT", "150000"))
 
 
 # Where to find the Extraction-and-classification repo.
@@ -101,6 +132,13 @@ def default_runner(pcap_path):
                 # actually the dos family output. So we ALWAYS accept the match
                 # for fam=="dos" when the name ends with "_dos_features.csv".
                 name = p.name
+                # CHỈ nhận output CỦA CHÍNH segment này (neo theo stem pcap).
+                # Nếu không neo, glob "*_{fam}_features.csv" sẽ nhặt cả file mẫu
+                # sample_*_features.csv (hoặc output segment khác) nằm chung thư
+                # mục → fast-path bên dưới luôn đủ 7 file → auto_pipeline KHÔNG
+                # bao giờ chạy trên pcap thật. Đây là gốc rễ của "flow giả".
+                if not name.startswith(base + "_"):
+                    continue
                 if fam == "dos" and name.endswith("_dos_features.csv"):
                     cands.append(p)
                 elif fam != "dos" and name.endswith(f"_{fam}_features.csv"):
@@ -153,6 +191,20 @@ def process_segment(blob, runner, sink):
     try:
         meta, pcap_bytes = parse_segment(blob)
         sid = meta["segment_id"]
+
+        # Circuit breaker: segment quá lớn (dấu hiệu DoS flood) → KHÔNG ghi pcap
+        # ra /dev/shm, KHÔNG chạy Argus/Zeek/pandas. Ghi nhận trực tiếp là DoS
+        # để tránh cạn RAM/OOM cả máy. Vẫn ghi 1 dòng audit ở finally.
+        n_pkts = int(meta.get("n_pkts", 0))
+        if n_pkts > MAX_PKTS_PER_SEGMENT:
+            logger.warning(
+                "[segment=%s] n_pkts=%d > cap=%d → SHED DoS: bỏ trích xuất nặng",
+                sid, n_pkts, MAX_PKTS_PER_SEGMENT)
+            n_by_family = {"dos": n_pkts}
+            status = "dos_shed"
+            return {"segment_id": sid, "n_flows_by_family": n_by_family,
+                    "status": status}
+
         # Sanitize segment_id for filesystem use.
         safe = "".join(c for c in sid if c.isalnum() or c in "-_") or "seg"
         pcap_path = str(SHM_DIR / f"{safe}.pcap")
@@ -272,19 +324,22 @@ def main():
             summ = process_segment(msg.value, default_runner, sink)
             n_processed += 1
             last_segment_id = summ.get("segment_id") or last_segment_id
-            if summ["status"] != "success":
+            if summ["status"] == "failed":
                 n_failed += 1
                 _SegmentAdapter(logger, {"segment_id": cur_sid}).error(
                     "segment processing FAILED: %s", summ,
                 )
             else:
+                # "success" hoặc "dos_shed" đều là đã xử lý xong → commit offset
+                # để KHÔNG lặp lại. (dos_shed mà không commit sẽ bị đọc lại vô
+                # hạn = tự làm nghẽn chính mình.)
                 _SegmentAdapter(logger, {"segment_id": cur_sid}).info(
-                    "segment OK flows=%s",
-                    summ.get("n_flows_by_family", {}),
+                    "segment %s flows=%s",
+                    summ["status"], summ.get("n_flows_by_family", {}),
                 )
                 consumer.commit()
 
-            if summ["status"] == "success" and n_processed % hb_segments == 0:
+            if summ["status"] != "failed" and n_processed % hb_segments == 0:
                 _emit_heartbeat(force=True)
             else:
                 _emit_heartbeat(force=False)

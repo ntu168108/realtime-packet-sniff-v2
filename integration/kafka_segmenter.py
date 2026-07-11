@@ -15,6 +15,7 @@ class KafkaPcapSegmenter:
         interface,
         segment_seconds=60,
         segment_max_bytes=64 << 20,
+        segment_max_packets=100_000,
         clock=time.time,
         id_factory=lambda: uuid.uuid4().hex,
     ):
@@ -23,6 +24,7 @@ class KafkaPcapSegmenter:
         self.interface = interface
         self.segment_seconds = segment_seconds
         self.segment_max_bytes = segment_max_bytes
+        self.segment_max_packets = segment_max_packets
         self.clock = clock
         self.id_factory = id_factory
         self._pkts = []
@@ -37,7 +39,10 @@ class KafkaPcapSegmenter:
             self._t_start = now
         self._pkts.append((ts_sec, ts_usec, data))
         self._bytes += len(data)
-        if self._bytes >= self.segment_max_bytes:
+        # Flush khi CHẠM bất kỳ ngưỡng nào: byte, thời gian (ở trên), HOẶC số
+        # gói. Trần số gói chặn cứng segment khổng lồ do DoS flood tạo ra.
+        if (self._bytes >= self.segment_max_bytes
+                or len(self._pkts) >= self.segment_max_packets):
             self.flush()
 
     def flush(self):

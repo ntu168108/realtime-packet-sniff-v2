@@ -38,6 +38,15 @@ clickhouse:
 export NB15_EC=/đường/dẫn/tới/Extraction-and-classification
 ```
 
+> **⚠ Bắt buộc — xóa CSV mẫu khỏi thư mục runtime.** Nếu `CSV/CSV_Full_feature/`
+> còn `sample_*_features.csv`, EC consumer sẽ **tái dùng chúng cho MỌI segment**
+> thay vì trích xuất pcap thật → flow trong ClickHouse toàn là dữ liệu giả
+> (`10.0.0.5→10.0.0.9`, feature=0). Dọn trước khi chạy:
+> ```bash
+> find "$NB15_EC/CSV/CSV_Full_feature" -name 'sample_*_features.csv' -delete
+> find "$NB15_EC/CSV/CSV_Full_feature" -name 'sample_raw.csv' -delete
+> ```
+
 ---
 
 ## Bước 8 — Khởi tạo schema ClickHouse
