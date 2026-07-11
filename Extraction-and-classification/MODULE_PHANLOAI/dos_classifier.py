@@ -359,12 +359,12 @@ def _precompute_conditions(
         | (srcip_arr == '255.255.255.255')
     )
     # Multicast: 224.0.0.0/4 hoặc IPv6 ff::
-    is_multicast = np.char.startswith(
-        srcip_arr.astype(str),
-        ('224.', '225.', '226.', '227.', '228.', '229.',
-         '230.', '231.', '232.', '233.', '234.', '235.',
-         '236.', '237.', '238.', '239.', 'ff'),
-    )
+    _srcip_str = srcip_arr.astype(str)
+    is_multicast = np.zeros(len(_srcip_str), dtype=bool)
+    for _prefix in ('224.', '225.', '226.', '227.', '228.', '229.',
+                    '230.', '231.', '232.', '233.', '234.', '235.',
+                    '236.', '237.', '238.', '239.', 'ff'):
+        is_multicast |= np.char.startswith(_srcip_str, _prefix)
     # UDP nghi ngờ = UDP nhưng KHÔNG phải mDNS/DHCP/broadcast/multicast
     is_udp_suspect = is_udp & ~is_mdns & ~is_dhcp & ~is_broadcast & ~is_multicast
 
