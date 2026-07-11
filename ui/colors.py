@@ -40,6 +40,9 @@ class Colors:
     BRIGHT_CYAN = '\033[96m'
     BRIGHT_WHITE = '\033[97m'
 
+    # Extra named color used by list_view (SYN flood warning)
+    ORANGE = '\033[38;5;208m'
+
     # Extended colors (256-color palette) - for sparklines etc.
     # Various gradient stops for sparklines
     SPARK_LOW = '\033[38;5;24m'
@@ -152,6 +155,10 @@ def magenta(text: str) -> str:
 
 def white(text: str) -> str:
     return color(text, Colors.WHITE)
+
+
+def orange(text: str) -> str:
+    return color(text, Colors.ORANGE)
 
 
 def bold(text: str) -> str:
