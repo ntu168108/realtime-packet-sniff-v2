@@ -311,8 +311,8 @@ def main():
 
     # 2.5 Xử lý bắt lỗi đặc biệt cho dtcpb và service
     logger.info("  Ap dung parse bat loi (try-except) cho dtcpb va service...")
-    df["dtcpb"] = df["dtcpb"].apply(parse_dtcpb)
-    df["service"] = df["service"].apply(parse_service)
+    df["dtcpb"] = parse_dtcpb(df["dtcpb"])
+    df["service"] = parse_service(df["service"])
 
     # -------------------------------------------------------------
     # BƯỚC 3: Tạo các tính năng Sliding Window (Cửa sổ trượt 100)
