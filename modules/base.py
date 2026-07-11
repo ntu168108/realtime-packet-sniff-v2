@@ -148,6 +148,54 @@ class Summary:
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
 
 
+# ---------- Read helpers (đối xứng với write_summary/write_detections) ----------
+
+def read_summary(path) -> Summary:
+    """
+    Đọc lại Summary từ file JSON đã ghi bởi BaseModule.write_summary().
+
+    Args:
+        path: đường dẫn tới file {basename}.summary.json
+
+    Returns:
+        Summary object dựng lại từ JSON.
+    """
+    with open(path, 'r', encoding='utf-8') as f:
+        data = json.load(f)
+    return Summary(**data)
+
+
+def read_detections(path) -> List[Detection]:
+    """
+    Đọc lại list Detection từ file JSONL đã ghi bởi BaseModule.write_detections()
+    (hoặc write_alerts(), cùng format).
+
+    Lưu ý: Detection.to_dict() flatten `details` vào top-level JSON, nên khi đọc
+    ngược lại phải tách field nào thuộc dataclass gốc, field nào thuộc `details`.
+
+    Args:
+        path: đường dẫn tới file {basename}.index.jsonl hoặc {basename}.alerts.jsonl
+
+    Returns:
+        List các Detection object dựng lại từ JSONL.
+    """
+    known_fields = {
+        "stt", "ts_sec", "label", "src", "dst", "sport", "dport",
+        "proto", "priority", "category", "alert_id",
+    }
+    detections: List[Detection] = []
+    with open(path, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            data = json.loads(line)
+            core = {k: v for k, v in data.items() if k in known_fields}
+            details = {k: v for k, v in data.items() if k not in known_fields}
+            detections.append(Detection(**core, details=details))
+    return detections
+
+
 # ---------- Base interfaces ----------
 
 class BaseModule(ABC):

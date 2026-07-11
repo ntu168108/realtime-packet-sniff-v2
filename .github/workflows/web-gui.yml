@@ -17,7 +17,7 @@ jobs:
         os: [ubuntu-22.04, ubuntu-24.04]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
@@ -27,13 +27,17 @@ jobs:
           sudo apt-get install -y libpcap-dev tcpdump
       - name: Install Python deps
         run: |
-          pip install --break-system-packages -r requirements.txt -r sniff-web/requirements-web.txt
+          pip install --break-system-packages \
+            -r requirements.txt \
+            -r sniff-web/requirements-web.txt \
+            -r requirements-integration.txt
       - name: Run sniff-web backend tests
         working-directory: sniff-web
-        run: pytest tests/integration_tests/ -v --ignore=tests/integration_tests/test_idempotency.py
+        run: pytest tests/integration_tests/ -v
       - name: Run pre-existing tests (regression check)
         run: |
-          pytest tests/integration_tests/ -v --deselect sniff-web/tests/integration_tests/test_idempotency.py
+          pytest tests/integration_tests/ -v \
+            --ignore=tests/integration_tests/test_idempotency.py
 
   frontend-build:
     name: Frontend (node-${{ matrix.node-version }})
@@ -43,7 +47,7 @@ jobs:
         node-version: [20, 22]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm

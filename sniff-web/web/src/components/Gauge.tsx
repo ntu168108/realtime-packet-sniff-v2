@@ -11,6 +11,10 @@ interface GaugeProps {
   sub?: string;
   /** Optional formatter for the value (defaults to toLocaleString). */
   format?: (v: number) => string;
+  /** Optional SVG width in px. Defaults to 200. */
+  width?: number;
+  /** Optional SVG height in px. Defaults to 120. */
+  height?: number;
 }
 
 /**
