@@ -490,6 +490,15 @@ class CaptureEngine:
             # Reopen next time
             self._close_proc_net_dev()
 
+        # Đồng bộ drop hàng đợi userspace. RingBuffer dùng drop-oldest: khi đầy
+        # nó ÂM THẦM đè gói cũ và put_nowait() vẫn trả True, nên nhánh
+        # `if not put_nowait(): queue_dropped += 1` trong _on_packet KHÔNG bao
+        # giờ chạy → phải đọc thẳng bộ đếm của ring để không đếm thiếu drop.
+        try:
+            self._stats.queue_dropped = self._packet_queue.dropped
+        except Exception:
+            pass
+
     def _fire_drop(self, reason: str, count: int):
         """Gọi on_drop callback (nếu có) - swallow exceptions"""
         if self.on_drop:
