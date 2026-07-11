@@ -973,7 +973,25 @@ CH_MAX_ROWS_HARD_LIMIT = 1000
 def query_clickhouse(sql: str, max_rows: int = 1000) -> dict:
     from clickhouse_driver import Client
     import time as _t
-    client = Client(host="localhost", port=9000, database="network_ids")
+    # Resolve CH connection from web.integrations.clickhouse (or fall back to defaults).
+    web_cfg = load_web_config("config.yaml")
+    ch_cfg = (web_cfg.get("integrations") or {}).get("clickhouse") or {}
+    # clickhouse_driver uses the NATIVE protocol (port 9000), NOT the HTTP
+    # interface (8123) referenced in the dashboard 'url' field. Use the
+    # native port unless an explicit override is present.
+    from urllib.parse import urlparse
+    url = ch_cfg.get("url", "http://localhost:8123")
+    parsed = urlparse(url) if "://" in url else None
+    host = (parsed.hostname if parsed else None) or (url.split(":", 1)[0] if url else "localhost") or "localhost"
+    port = ch_cfg.get("native_port") or 9000
+    user = ch_cfg.get("username") or "default"
+    password = ch_cfg.get("password") or None
+    client_kwargs = {"host": host, "port": int(port), "database": "network_ids"}
+    if user:
+        client_kwargs["user"] = user
+    if password:
+        client_kwargs["password"] = password
+    client = Client(**client_kwargs)
     start = _t.time()
     rows = client.execute(sql, with_column_types=True)
     elapsed = (_t.time() - start) * 1000
