@@ -39,6 +39,15 @@ The pipeline auto-discovers `Extraction-and-classification/` relative to the rep
 export NB15_EC=/path/to/Extraction-and-classification
 ```
 
+> **⚠ Bắt buộc — xóa CSV mẫu khỏi thư mục runtime.** Nếu thư mục
+> `CSV/CSV_Full_feature/` còn các file `sample_*_features.csv`, EC consumer sẽ
+> **tái dùng chúng cho MỌI segment** thay vì trích xuất pcap thật → toàn bộ flow
+> trong ClickHouse là dữ liệu giả (`10.0.0.5→10.0.0.9`, feature=0). Dọn trước khi chạy:
+> ```bash
+> find "$NB15_EC/CSV/CSV_Full_feature" -name 'sample_*_features.csv' -delete
+> find "$NB15_EC/CSV/CSV_Full_feature" -name 'sample_raw.csv' -delete
+> ```
+
 ---
 
 ## Step 8 — Initialise the ClickHouse Schema
@@ -226,6 +235,22 @@ clickhouse-client --query \
     "SELECT started_at, status, total_flows, duration_sec, error_msg
      FROM network_ids.pipeline_runs
      ORDER BY started_at DESC LIMIT 5"
+```
+
+**Nghiệm thu chống "flow giả"** — 3 truy vấn sau phải cho kết quả đúng, nếu không là pipeline đang nạp dữ liệu mẫu chứ không phải traffic thật:
+
+```bash
+# (1) KHÔNG còn dữ liệu mẫu synthetic → kỳ vọng 0
+clickhouse-client --query \
+    "SELECT count() FROM network_ids.flows_all WHERE srcip='10.0.0.5' AND dstip='10.0.0.9'"
+
+# (2) Có flow feature THẬT (khác 0) → kỳ vọng > 0
+clickhouse-client --query \
+    "SELECT count() FROM network_ids.flows_all WHERE spkts > 0 OR sbytes > 0"
+
+# (3) Không còn nhãn rỗng → kỳ vọng 0
+clickhouse-client --query \
+    "SELECT count() FROM network_ids.flows_all WHERE predicted_class = ''"
 ```
 
 ### 10.4 Open Grafana

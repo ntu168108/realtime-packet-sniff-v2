@@ -155,3 +155,34 @@ class RingBuffer:
 
     def __bool__(self) -> bool:
         return bool(self._deque)
+
+
+class BoundedRingBuffer(RingBuffer):
+    """
+    Ring buffer có TRẦN CỨNG với semantics *drop-newest* (back-pressure).
+
+    Khác `RingBuffer` (drop-oldest, đè phần tử cũ nhất khi đầy):
+    khi đã đầy, `BoundedRingBuffer` TỪ CHỐI item mới — `put_nowait()` trả về
+    False và tăng bộ đếm `dropped`, KHÔNG đè dữ liệu cũ.
+
+    Dùng khi ta muốn báo hiệu áp lực ngược cho producer (ví dụ: đang bị DoS
+    flood → cắt tải ngay ở đầu vào) thay vì âm thầm mất gói cũ. Vẫn atomic
+    dưới GIL ở hot path; lock chỉ bảo vệ counter.
+
+    NOTE (lịch sử): `core.capture` import class này từ trước nhưng nó chưa
+    từng được định nghĩa → mọi lần nạp `core.capture` sẽ ImportError. Định
+    nghĩa ở đây vừa vá lỗi import vừa cung cấp chiến lược drop-newest tùy chọn.
+    """
+
+    def put_nowait(self, item: Any) -> bool:
+        dq = self._deque
+        if len(dq) >= self._maxlen:
+            # Đầy → từ chối item mới (drop-newest), đếm drop.
+            with self._lock:
+                self._put_total += 1
+                self._dropped += 1
+            return False
+        dq.append(item)
+        with self._lock:
+            self._put_total += 1
+        return True
