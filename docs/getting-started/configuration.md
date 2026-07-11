@@ -40,6 +40,16 @@ cp config.yaml.example config.yaml
 | `daemon.log_level` | `DEBUG` / `INFO` / `WARNING` / `ERROR`. |
 | `web.*` | Web GUI settings (see below). |
 | `web.integrations.*` | External URLs shown on the Dashboard. |
+| `capture.evidence_dumpcap` | (Producer/pipeline) Ghi PCAP bằng chứng qua `dumpcap`, chống mất gói burst. |
+| `capture.evidence_buffer_mb` | Kernel buffer cho dumpcap (MiB), mặc định 512. |
+
+> **Tinh chỉnh chống mất gói khi tải cao (burst/DoS).** Cấu hình cũ
+> (`buffer_profile: balanced`, `ring_buffer_size: 65536`, `batch_size: 256`,
+> `gc_interval: 30`) làm mất tới ~60% gói trong burst (vd cú POST 100 MB). Khuyến
+> nghị: `buffer_profile: max`, `ring_buffer_size: 1048576`, `batch_size: 1024`,
+> `gc_interval: 0`. Với nhánh producer/pipeline, bật `capture.evidence_dumpcap: true`
+> để `dumpcap` ghi bản pcap bằng chứng không drop, và trên NIC chạy
+> `sudo ethtool -K <iface> gro off lro off` (bắt gói thật thay vì khung GRO gộp).
 
 ## Web GUI keys (`web:`)
 

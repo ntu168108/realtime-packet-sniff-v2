@@ -10,6 +10,10 @@ _DEFAULTS = {
         "topic": "raw_pcap_segments",
         "segment_seconds": 60,
         "segment_max_bytes": 64 * 1024 * 1024,
+        # Trần CỨNG số gói mỗi segment. Chống DoS: một trận flood gói nhỏ có
+        # thể nhồi ~880k gói vào 64MiB → khi trích đặc trưng sẽ cạn RAM. Cắt
+        # ở 100k giữ segment đủ nhỏ để Argus/Zeek/pandas xử lý an toàn.
+        "segment_max_packets": 100_000,
     },
     "clickhouse": {
         "host": "localhost",
@@ -21,6 +25,10 @@ _DEFAULTS = {
         "interface": "ens33",
         "bpf": "not port 22",
         "keep_local_pcap": False,
+        # Ngưỡng tự bảo vệ chống DoS (DosGuard). pps = gói/giây.
+        "dos_trigger_pps": 50_000,   # vượt mức này → bật chế độ cắt tải (DoS)
+        "dos_clear_pps": 15_000,     # xuống dưới mức này → tắt (hysteresis)
+        "dos_target_pps": 10_000,    # mức gói/giây ta CHẤP NHẬN thu khi bị DoS
     },
 }
 
