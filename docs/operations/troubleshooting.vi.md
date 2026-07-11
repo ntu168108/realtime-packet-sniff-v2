@@ -2,6 +2,48 @@
 
 ## Xử lý sự cố thường gặp
 
+### ❌ `sniff-producer` báo lỗi `[Error 10] MessageSizeTooLargeError`
+
+`message.max.bytes` mặc định của Kafka (1 MiB) nhỏ hơn blob pcap segment
+(`segment_max_bytes`, mặc định 64 MiB). `max_request_size` phía producer đã
+đúng — đây là cấu hình **ở cấp topic** trên broker, cần tăng riêng:
+
+```bash
+/opt/kafka/bin/kafka-configs.sh --bootstrap-server localhost:9092 \
+    --entity-type topics --entity-name raw_pcap_segments \
+    --alter --add-config max.message.bytes=104857600
+
+sudo systemctl restart sniff-producer
+```
+
+Xem [Cài đặt bước 3.4](../getting-started/installation.vi.md#34-tang-gioi-han-kich-thuoc-message-cua-topic).
+
+### ❌ Segment tới được `ec-consumer` nhưng `pipeline_runs.status` luôn là `failed`
+
+Xem traceback thật qua `sudo journalctl -u ec-consumer -n 50` — triệu chứng
+này có nhiều nguyên nhân khác nhau, tất cả đã fix ở phiên bản khớp tài liệu
+này:
+
+- `NameError: name 'setup_logging' is not defined` (extractor.py) — checkout
+  cũ trước khi có bản fix; `git pull` / clone lại.
+- `NameError: name 'wanted_fields' is not defined` (zeek_handler.py) — tương tự.
+- `AttributeError: 'int' object has no attribute 'fillna'` (add_features.py) —
+  tương tự.
+- `ModuleNotFoundError: No module named 'family_filter'` (auto_pipeline.py) —
+  tương tự.
+- `auto_pipeline.py` báo `PIPELINE HOAN TAT` (thành công) nhưng ClickHouse
+  không có dòng nào và `ec-consumer` vẫn đánh dấu segment `failed` — consumer
+  tìm 7 CSV theo family sai thư mục (`CSV/CSV_Full_feature/` thay vì đúng
+  `CSV/Filter_<Family>_feature/` của từng family). Đã fix trong
+  `integration/ec_consumer.py`; clone/pull lại nếu vẫn gặp.
+- `ValueError: operands could not be broadcast together ... (N,) (17,)` từ
+  `dos_classifier.py` — `np.char.startswith()` được gọi với tuple nhiều
+  prefix multicast, hàm này không hỗ trợ kiểu đó (khác với `str.startswith()`
+  của Python). Lỗi bị bắt và chỉ log warning (`DoS Classifier khong chay
+  duoc`, không chặn pipeline), nhưng khiến `predicted_class` rỗng ở mọi dòng.
+  Đã fix bằng cách OR từng prefix trong vòng lặp; clone/pull lại nếu vẫn thấy
+  warning này.
+
 ### ❌ `sniff-producer` không kết nối được Kafka
 
 ```bash

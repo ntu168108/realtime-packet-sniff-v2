@@ -2,6 +2,55 @@
 
 All notable changes to `realtime-packet-sniff-v2` are documented in this file.
 
+## [Unreleased] - fix/ec-pipeline-real-data-bugs
+
+### Fixed
+- **Extract+Classify stage never produced real flow data — every segment
+  either crashed or fell through to nothing**, discovered while deploying the
+  full stack (Kafka + ClickHouse + Grafana + Argus + Zeek) end-to-end and
+  driving it with live captured traffic. Six separate bugs, each blocking the
+  next step in the chain:
+  - **`Extraction-and-classification/MODULE_TRICHXUAT/extractor.py`** —
+    `main()` called `setup_logging(verbose=...)` but the function was never
+    defined in the module (`NameError`). Added a `setup_logging()` that wires
+    `logging.basicConfig` to the module's existing `LOG_FORMAT`/`LOG_DATE_FMT`.
+  - **`Extraction-and-classification/MODULE_TRICHXUAT/zeek_handler.py`** —
+    the CSV-writing loop iterated an undefined `wanted_fields` name; the
+    actual computed column list is `csv_columns` (`NameError`).
+  - **`Extraction-and-classification/MODULE_TRICHXUAT/add_features.py`** —
+    `parse_dtcpb` / `parse_service` are vectorized (`Series -> Series`)
+    functions but were invoked via `.apply(...)`, which calls them per-scalar
+    instead, raising `AttributeError: 'int' object has no attribute 'fillna'`.
+    Call them directly on the column instead.
+  - **`Extraction-and-classification/MODULE_AUTO/auto_pipeline.py`** — imported
+    `family_filter` without first adding `MODULE_PHANLOAI` to `sys.path`
+    (`ModuleNotFoundError`) in step 3/4 (the 7 per-family filters).
+  - **`integration/ec_consumer.py`** (root cause of "no real data ever reaches
+    ClickHouse") — `default_runner()` globbed all 7 families from
+    `CSV/CSV_Full_feature/`, but `auto_pipeline.py` actually writes each
+    family's filtered CSV into its own `CSV/Filter_<Family>_feature/`
+    directory. The consumer never found real per-family output, so every
+    segment was marked `status=failed` and ClickHouse never got real rows.
+  - **`Extraction-and-classification/MODULE_PHANLOAI/dos_classifier.py`** —
+    `np.char.startswith()` does not accept a tuple of prefixes the way
+    Python's `str.startswith()` does; it broadcasts element-wise against the
+    input array, so passing a 17-item multicast-prefix tuple raised
+    `ValueError: operands could not be broadcast together` whenever a
+    segment's row count wasn't exactly 17. This silently killed the DoS
+    classification step (masked by a blanket except/warn), leaving
+    `predicted_class` empty in ClickHouse. Fixed by OR-ing the per-prefix
+    boolean masks in a loop instead.
+- Also required, at the infra level (not a code bug but a deployment gotcha
+  worth documenting): Kafka's default `message.max.bytes` (1 MiB) rejects
+  pcap segment blobs larger than that even though the producer's
+  `max_request_size` is already sized for `segment_max_bytes` — see the new
+  Step 3.4 in [Installation](docs/getting-started/installation.md) and the
+  Troubleshooting entry for `MessageSizeTooLargeError`.
+
+Verified end-to-end on a live deployment: captured real traffic → Kafka →
+Argus/Zeek → 7 family filters → DoS classifier → ClickHouse now shows real,
+non-sample flow rows with populated `predicted_class` for every new segment.
+
 ## [Unreleased] - fix/flow-gia-va-mat-goi
 
 ### Fixed

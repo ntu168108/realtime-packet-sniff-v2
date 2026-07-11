@@ -30,6 +30,50 @@
 
 ## Troubleshooting
 
+### ❌ `sniff-producer` logs `[Error 10] MessageSizeTooLargeError`
+
+Kafka's default `message.max.bytes` (1 MiB) is smaller than a pcap segment
+blob (`segment_max_bytes`, default 64 MiB). The producer's own
+`max_request_size` is already sized correctly — this is a **topic-level**
+broker setting that also needs raising:
+
+```bash
+/opt/kafka/bin/kafka-configs.sh --bootstrap-server localhost:9092 \
+    --entity-type topics --entity-name raw_pcap_segments \
+    --alter --add-config max.message.bytes=104857600
+
+sudo systemctl restart sniff-producer
+```
+
+See [Installation Step 3.4](../getting-started/installation.md#34-raise-the-topics-max-message-size).
+
+### ❌ Segments reach `ec-consumer` but `pipeline_runs.status` is always `failed`
+
+Check `sudo journalctl -u ec-consumer -n 50` for the actual traceback — this
+symptom has several unrelated root causes, all fixed as of the version
+matching this doc:
+
+- `NameError: name 'setup_logging' is not defined` (extractor.py) — outdated
+  checkout predating the fix; `git pull` / re-clone.
+- `NameError: name 'wanted_fields' is not defined` (zeek_handler.py) — same.
+- `AttributeError: 'int' object has no attribute 'fillna'` (add_features.py) —
+  same.
+- `ModuleNotFoundError: No module named 'family_filter'` (auto_pipeline.py) —
+  same.
+- `auto_pipeline.py` reports `PIPELINE HOAN TAT` (success) but ClickHouse
+  never gets rows and `ec-consumer` still marks the segment `failed` — the
+  consumer was looking for the 7 per-family CSVs in the wrong directory
+  (`CSV/CSV_Full_feature/` instead of each family's own
+  `CSV/Filter_<Family>_feature/`). Fixed in `integration/ec_consumer.py`;
+  re-clone/pull if you still see this.
+- `ValueError: operands could not be broadcast together ... (N,) (17,)` from
+  `dos_classifier.py` — `np.char.startswith()` was called with a tuple of
+  multicast prefixes, which it doesn't support (unlike Python's
+  `str.startswith()`). This one is caught and only logged as a warning
+  (`DoS Classifier khong chay duoc`, non-fatal), but it left `predicted_class`
+  empty for every row. Fixed by OR-ing per-prefix masks in a loop; re-clone/
+  pull if you still see the warning.
+
 ### ❌ `sniff-producer` cannot connect to Kafka
 
 ```bash

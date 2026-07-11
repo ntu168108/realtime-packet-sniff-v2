@@ -175,6 +175,30 @@ sleep 10
 > - `random-uuid` — tạo ID duy nhất cho cluster Kafka
 > - `format` — khởi tạo thư mục lưu trữ với cluster ID đó (chỉ cần làm 1 lần)
 
+### 3.4 Tăng giới hạn kích thước message của topic
+
+> **Bắt buộc** — `message.max.bytes` mặc định của Kafka là **1 MiB**. Một
+> blob pcap segment (`segment_max_bytes`, mặc định 64 MiB) luôn lớn hơn mức
+> này, nên nếu bỏ qua bước này producer sẽ luôn báo lỗi
+> `MessageSizeTooLargeError` dù `max_request_size` phía producer đã cấu hình
+> đúng. Đây là cấu hình **ở cấp topic**, không phải cấu hình producer — chỉ
+> tăng `max_request_size` là chưa đủ.
+
+```bash
+/opt/kafka/bin/kafka-configs.sh --bootstrap-server localhost:9092 \
+    --entity-type topics --entity-name raw_pcap_segments \
+    --alter --add-config max.message.bytes=104857600
+
+# Kiểm tra
+/opt/kafka/bin/kafka-configs.sh --bootstrap-server localhost:9092 \
+    --entity-type topics --entity-name raw_pcap_segments --describe
+```
+
+> Với cluster nhiều broker, bạn cũng cần tăng `replica.fetch.max.bytes` trên
+> mỗi broker (cấu hình tĩnh — đặt trong `server.properties` rồi khởi động
+> lại broker, không đổi được lúc đang chạy). Bỏ qua với setup 1-broker KRaft
+> ở đây (`replication-factor=1` nên không có replica fetch).
+
 ---
 
 ## Bước 4 — Cài ClickHouse

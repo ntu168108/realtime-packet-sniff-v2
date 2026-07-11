@@ -220,6 +220,31 @@ sleep 10
 > - `random-uuid` — generates a unique cluster ID
 > - `format` — initialises the storage directory with that cluster ID (one-time setup only)
 
+### 3.4 Raise the topic's max message size
+
+> **Required** — Kafka's cluster-wide default `message.max.bytes` is **1 MiB**.
+> A pcap segment blob (`segment_max_bytes`, default 64 MiB) is always larger
+> than that, so without this step the producer fails every publish with
+> `MessageSizeTooLargeError` even though its own `max_request_size` is already
+> sized correctly. This is a **topic-level** config, not a producer setting —
+> raising `max_request_size` alone does not fix it.
+
+```bash
+/opt/kafka/bin/kafka-configs.sh --bootstrap-server localhost:9092 \
+    --entity-type topics --entity-name raw_pcap_segments \
+    --alter --add-config max.message.bytes=104857600
+
+# Verify
+/opt/kafka/bin/kafka-configs.sh --bootstrap-server localhost:9092 \
+    --entity-type topics --entity-name raw_pcap_segments --describe
+```
+
+> On a multi-broker cluster you would also raise `replica.fetch.max.bytes` on
+> each broker (a static config — set it in `server.properties` and restart
+> the broker, it cannot be changed dynamically). Skip this on the
+> single-broker KRaft setup described here (`replication-factor=1` means
+> there are no replica fetches).
+
 ---
 
 ## Step 4 — ClickHouse
