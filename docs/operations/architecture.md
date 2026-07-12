@@ -144,6 +144,34 @@ undetected and made one flow match several families at once (7× duplication in
 mDNS/SSDP/DHCP/NetBIOS/DNS/NTP), and far/external destinations are excluded from
 family labels. See CHANGELOG `fix/classification-accuracy-real-traffic`.
 
+### Adaptive DoS self-protection (producer)
+
+`integration/dos_guard.py` (`DosGuard`) is the capture-side load valve. It runs
+as a 1 Hz control loop in `run_producer.py` and decides, per packet, whether to
+keep or drop (`should_keep`). Three signals drive it:
+
+1. **Backpressure (default, NIC-agnostic)** — escalates shedding (AIMD on
+   `sample_every`) when the pipeline actually falls behind: kernel/queue drops
+   climb or the ring buffer fills past `dos_queue_high_ratio`. Because it reacts
+   to saturation rather than an absolute packet rate, it scales to any NIC speed.
+2. **Absolute pps (legacy)** — the original `dos_trigger_pps` threshold, kept for
+   small/lab LANs. The effective sample rate is `max(backpressure, pps)`.
+3. **Per-destination concentration** — once shedding is active, the guard finds a
+   "hot victim" (a single destination taking ≥ `dos_victim_share` of packets and
+   over `dos_victim_min_pps`) and sheds only that destination's flood, keeping
+   traffic to every other destination at full fidelity. Destination is parsed
+   from the raw frame only while `dos_active` (zero cost in normal operation).
+
+The ring buffer has a hard ceiling and drops-newest when full, so the host can
+never OOM from the queue regardless of guard tuning; the guard's job is to shed
+*early and selectively* so a flood costs CPU/quality, not a crash. The consumer's
+`EC_MAX_PKTS_PER_SEGMENT` circuit breaker is the last-resort backstop.
+
+**Scaling note:** full-packet capture via this Python/Scapy path is not intended
+for sustained 10G/100G line rate. At those speeds add kernel-level sampling
+(`PACKET_FANOUT`/XDP) or move to flow telemetry (sFlow/NetFlow/IPFIX); the
+adaptive guard here keeps the box alive but cannot manufacture capture headroom.
+
 ### Per-family tables
 
 Seven sibling tables — `flows_dos`, `flows_exploits`, `flows_fuzzers`,
