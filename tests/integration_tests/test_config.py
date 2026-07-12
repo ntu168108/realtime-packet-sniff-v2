@@ -24,3 +24,14 @@ def test_clickhouse_env_override(monkeypatch):
     monkeypatch.setenv("CLICKHOUSE_HOST", "ch.example")
     cfg = load_config(path="/nonexistent.yaml")
     assert cfg["clickhouse"]["host"] == "ch.example"
+
+
+def test_capture_defaults_include_adaptive_dos_keys():
+    cfg = load_config(path="/nonexistent-so-defaults-only.yaml")
+    cap = cfg["capture"]
+    assert cap["dos_backpressure"] is True
+    assert cap["dos_queue_high_ratio"] == 0.5
+    assert cap["dos_queue_low_ratio"] == 0.2
+    assert cap["dos_victim_share"] == 0.5
+    assert cap["dos_victim_min_pps"] == 1_000
+    assert cap["dos_max_drop"] == 200

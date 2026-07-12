@@ -14,6 +14,20 @@ capture:
   # 1518 = full Ethernet, 65535 = max
   snaplen: 65535
 
+  # --- DoS self-protection (DosGuard) ---
+  # pps tuyệt đối — chỉ hợp mạng nhỏ/lab (KHÔNG co giãn theo NIC 10G/100G):
+  dos_trigger_pps: 50000
+  dos_clear_pps: 15000
+  dos_target_pps: 10000
+  # backpressure (NIC-agnostic, KHUYẾN NGHỊ bật): cắt tải theo drop/queue thật:
+  dos_backpressure: true
+  dos_queue_high_ratio: 0.5
+  dos_queue_low_ratio: 0.2
+  # cắt tải chọn lọc theo đích (giữ traffic hợp lệ); 0 = tắt:
+  dos_victim_share: 0.5
+  dos_victim_min_pps: 1000
+  dos_max_drop: 200
+
   # Promiscuous mode (true = bắt tất cả gói trên mạng)
   promisc: true
 

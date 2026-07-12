@@ -2,6 +2,35 @@
 
 All notable changes to `realtime-packet-sniff-v2` are documented in this file.
 
+## [Unreleased] - feat/dosguard-adaptive-backpressure
+
+### Added
+- **DosGuard backpressure mode (NIC-agnostic self-protection).** The capture-side
+  load valve now sheds based on real pipeline saturation — kernel/queue drops and
+  ring-buffer fill from `CaptureEngine.get_status()` — via an AIMD controller,
+  instead of relying only on an absolute `pps` threshold that mis-scales on
+  10G/100G links. Effective sampling is `max(backpressure, pps)`; the pps path is
+  retained for small/lab LANs. Config: `dos_backpressure`, `dos_queue_high_ratio`,
+  `dos_queue_low_ratio`.
+- **Per-destination surgical shedding.** While shedding is active, the guard
+  identifies a concentrated flood victim (≥ `dos_victim_share` of packets and
+  over `dos_victim_min_pps`) and sheds only that destination's traffic, keeping
+  every other destination at full fidelity — so a flood aimed at one host no
+  longer forces uniform sampling of legitimate traffic. Destination is parsed from
+  the raw frame only while `dos_active` (zero added cost in normal operation).
+  Config: `dos_victim_share`, `dos_victim_min_pps`, `dos_max_drop`.
+
+### Changed
+- `integration/run_producer.py` now imports `kafka` lazily (inside `_make_producer`)
+  so the module's pure helpers are importable/testable without kafka-python.
+
+### Notes
+- `DosGuard.update()` and `should_keep()` remain backward compatible
+  (`update(pps)` / `should_keep(seq)` still valid); new inputs are keyword-only /
+  optional. No ClickHouse schema, sink, Kafka, or classifier changes.
+- Full-packet capture on this Python/Scapy path is not intended for sustained
+  10G/100G; see `docs/operations/architecture.md` (Adaptive DoS self-protection).
+
 ## [Unreleased] - fix/classification-accuracy-real-traffic
 
 Xác thực bằng thực nghiệm tấn công thật (Kali `192.168.106.60` → Ubuntu VM

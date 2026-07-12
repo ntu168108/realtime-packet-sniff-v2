@@ -25,10 +25,21 @@ _DEFAULTS = {
         "interface": "ens33",
         "bpf": "not port 22",
         "keep_local_pcap": False,
-        # Ngưỡng tự bảo vệ chống DoS (DosGuard). pps = gói/giây.
+        # --- Tự bảo vệ chống DoS (DosGuard) ---
+        # Cơ chế pps tuyệt đối (nhỏ/lab; con số tuyệt đối, KHÔNG co giãn theo NIC).
         "dos_trigger_pps": 50_000,   # vượt mức này → bật chế độ cắt tải (DoS)
         "dos_clear_pps": 15_000,     # xuống dưới mức này → tắt (hysteresis)
-        "dos_target_pps": 10_000,    # mức gói/giây ta CHẤP NHẬN thu khi bị DoS
+        "dos_target_pps": 10_000,    # mức gói/giây CHẤP NHẬN thu khi bị DoS
+        # Cơ chế backpressure (NIC-agnostic): cắt tải khi pipeline THỰC SỰ hụt
+        # hơi (kernel/queue drop, hàng đợi đầy) — đúng cho mọi tốc độ NIC.
+        "dos_backpressure": True,
+        "dos_queue_high_ratio": 0.5,  # hàng đợi đầy >= mức này → tăng cắt tải
+        "dos_queue_low_ratio": 0.2,   # hàng đợi <= mức này + hết drop → giảm dần
+        # Cắt tải CÓ CHỌN LỌC theo đích: chỉ hạ luồng đổ vào victim tập trung,
+        # giữ nguyên traffic hợp lệ tới đích khác. Đặt dos_victim_share=0 để tắt.
+        "dos_victim_share": 0.5,      # 1 đích chiếm >= tỉ lệ này → coi là victim
+        "dos_victim_min_pps": 1_000,  # và vượt mức pps này (tránh báo nhầm lúc nhàn)
+        "dos_max_drop": 200,          # trần tỉ lệ bỏ gói (giữ tối thiểu 1/200)
     },
 }
 

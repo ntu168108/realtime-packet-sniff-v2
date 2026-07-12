@@ -10,14 +10,45 @@ import sys
 import threading
 import time
 
-from kafka import KafkaProducer
-
 from .config import load_config
 from .dos_guard import DosGuard
 from .kafka_segmenter import KafkaPcapSegmenter
 
 
+def _ipv4_dst(data):
+    """Trích 4 byte IP đích từ khung Ethernet thô. Trả None nếu không phải IPv4.
+
+    Cực rẻ (chỉ đọc vài byte, không cấp phát) — an toàn cho hot path. Chỉ hỗ trợ
+    Ethernet II + tùy chọn 1 tag 802.1Q; các loại khác trả None (bỏ qua per-dst).
+    """
+    n = len(data)
+    if n < 34:
+        return None
+    etype = (data[12] << 8) | data[13]
+    off = 14
+    if etype == 0x8100:  # 802.1Q VLAN
+        if n < 38:
+            return None
+        etype = (data[16] << 8) | data[17]
+        off = 18
+    if etype != 0x0800:  # not IPv4
+        return None
+    if n < off + 20:
+        return None
+    return bytes(data[off + 16:off + 20])
+
+
+def _fmt_ip(b):
+    """bytes(4) -> 'a.b.c.d' cho log; chấp nhận None."""
+    if not b or len(b) != 4:
+        return "-"
+    return ".".join(str(x) for x in b)
+
+
 def _make_producer(bootstrap, max_segment_bytes):
+    # Late import: giữ module import được (vd để test helper thuần) khi chưa cài
+    # kafka-python; khớp pattern late-import scapy đã dùng bên dưới.
+    from kafka import KafkaProducer
     return KafkaProducer(
         bootstrap_servers=bootstrap,
         max_request_size=max_segment_bytes + (1 << 20),
@@ -44,16 +75,26 @@ def main():
         segment_max_packets=cfg["kafka"].get("segment_max_packets", 100_000),
     )
 
-    # Tự bảo vệ chống DoS: phát hiện flood qua pps, cắt tải bằng lấy mẫu 1/N.
+    # Tự bảo vệ chống DoS: cắt tải theo backpressure (NIC-agnostic) + pps, và
+    # cắt CÓ CHỌN LỌC theo đích victim (giữ traffic hợp lệ).
+    _cap = cfg["capture"]
     guard = DosGuard(
-        trigger_pps=cfg["capture"].get("dos_trigger_pps", 50_000),
-        clear_pps=cfg["capture"].get("dos_clear_pps", 15_000),
-        target_pps=cfg["capture"].get("dos_target_pps", 10_000),
+        trigger_pps=_cap.get("dos_trigger_pps", 50_000),
+        clear_pps=_cap.get("dos_clear_pps", 15_000),
+        target_pps=_cap.get("dos_target_pps", 10_000),
+        max_drop=_cap.get("dos_max_drop", 200),
+        backpressure=_cap.get("dos_backpressure", True),
+        queue_high_ratio=_cap.get("dos_queue_high_ratio", 0.5),
+        queue_low_ratio=_cap.get("dos_queue_low_ratio", 0.2),
+        victim_share=_cap.get("dos_victim_share", 0.5),
+        victim_min_pps=_cap.get("dos_victim_min_pps", 1_000),
     )
 
     def on_pkt(pi):
-        # Khi bị DoS, guard.sample_every > 1 → chỉ giữ 1/N gói flood.
-        if not guard.should_keep(pi.stt):
+        # Fast path: khi KHÔNG bị DoS, không phân tích đích (dst=None) → không tốn gì.
+        # Khi đang bị DoS, trích đích để cắt tải CÓ CHỌN LỌC (giữ traffic hợp lệ).
+        dst = _ipv4_dst(pi.data) if guard.dos_active else None
+        if not guard.should_keep(pi.stt, dst):
             return
         seg.add_packet(pi.ts_sec, pi.ts_usec, pi.data)
 
@@ -168,14 +209,23 @@ def main():
         was_active = False
         while engine.is_running:
             try:
-                pps = engine.get_status().get("pps", 0.0)
-                active = guard.update(pps)
+                st = engine.get_status()
+                pps = st.get("pps", 0.0)
+                active = guard.update(
+                    pps,
+                    kernel_drops=st.get("dropped", 0),
+                    queue_drops=st.get("queue_dropped", 0),
+                    qsize=st.get("queue_size", 0),
+                    qcap=st.get("queue_capacity", 0),
+                )
                 if active:
                     top = engine.get_top_conversations(5)
                     ev = evidence.drop_stats() if evidence is not None else {}
                     seg_logger.warning(
-                        "DoS SUSPECTED pps=%.0f giu_1/%d top_talkers=%s evidence_drop=%s",
-                        pps, guard.sample_every, top, ev,
+                        "DoS SUSPECTED pps=%.0f giu_1/%d bp_level=%d victim=%s "
+                        "top_talkers=%s evidence_drop=%s",
+                        pps, guard.sample_every, guard._bp_level,
+                        _fmt_ip(guard._hot_victim), top, ev,
                     )
                 elif was_active:
                     seg_logger.info("DoS cleared pps=%.0f, thu day lai (1/1)", pps)

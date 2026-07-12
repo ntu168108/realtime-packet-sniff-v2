@@ -313,6 +313,28 @@ clickhouse-client --query \
 > QUYẾT ĐỊNH nhãn giờ do `unified_classifier` đảm nhiệm. Nếu bạn tự hiệu chỉnh
 > chữ ký cho traffic thật, sửa các file JSON đó — điểm sẽ được unified đọc lại.
 
+### 11.4 Chống quá tải khi bị flood (DosGuard — tầng producer)
+
+Khác với 11.3 (biến môi trường của `ec-consumer`), các khoá dưới đây đặt trong
+`config.yaml` mục `capture:` và áp cho **`sniff-producer`**. Sau khi sửa:
+`sudo systemctl restart sniff-producer`.
+
+| Khoá (trong `config.yaml` → `capture:`) | Mặc định | Ý nghĩa / khi nào chỉnh |
+|---|---|---|
+| `dos_backpressure` | `true` | Bật cắt tải theo backpressure (drop/queue thật) — NIC-agnostic, KHUYẾN NGHỊ để `true`. Với NIC 10G/100G đây là cơ chế chính; ngưỡng pps tuyệt đối gần như vô dụng ở tốc độ đó. |
+| `dos_queue_high_ratio` | `0.5` | Hàng đợi đầy ≥ tỉ lệ này → tăng cắt tải. Hạ xuống để phản ứng sớm hơn. |
+| `dos_queue_low_ratio` | `0.2` | Hàng đợi ≤ tỉ lệ này + hết drop → giảm cắt tải dần, rồi trở lại 1/1. |
+| `dos_victim_share` | `0.5` | 1 đích chiếm ≥ tỉ lệ này tổng gói → coi là victim, chỉ cắt luồng tới nó, giữ traffic hợp lệ khác. Đặt `0` để tắt cắt-tải-chọn-lọc. |
+| `dos_victim_min_pps` | `1000` | Ngưỡng pps tối thiểu của 1 đích để bị coi là victim (tránh báo nhầm lúc mạng nhàn). |
+| `dos_max_drop` | `200` | Trần tỉ lệ bỏ gói (giữ tối thiểu 1/200) — dù flood cực lớn vẫn còn mẫu để phân loại. |
+| `dos_trigger_pps` / `dos_clear_pps` / `dos_target_pps` | `50000/15000/10000` | Ngưỡng pps tuyệt đối (cơ chế cũ, mạng nhỏ/lab). Sample cuối = `max(backpressure, pps)`. |
+
+> **NIC nhanh (10G/100G):** để `dos_backpressure: true` và **bỏ qua** việc chỉnh
+> `dos_trigger_pps` (ngưỡng tuyệt đối không co giãn theo NIC). Guard sẽ tự cắt tải
+> khi thực sự hụt hơi. Nếu vẫn drop nhiều ở kernel, vấn đề là TRẦN BẮT GÓI của
+> tầng Python/Scapy — cần kernel sampling (PACKET_FANOUT/XDP) hoặc flow telemetry
+> (sFlow/IPFIX), không phải chỉnh guard.
+
 ---
 
 ## Vận hành hàng ngày
