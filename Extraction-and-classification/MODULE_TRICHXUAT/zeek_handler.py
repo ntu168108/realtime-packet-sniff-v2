@@ -124,11 +124,24 @@ def run_zeek(pcap_file: str, work_dir: str) -> str:
     # ------------------------------------------------------------------
     # Buoc 2b: Kiem tra conn.log ton tai
     # ------------------------------------------------------------------
+    # Zeek KHONG sinh conn.log khi segment khong co ket noi TCP/UDP nao no nhan
+    # ra (vd 60s chi toan ARP/STP/goi di dang, hoac segment rat ngan). Truoc day
+    # ta raise RuntimeError -> CA segment that bai va bi mat trang (2 segment bi
+    # mat ngay sau dot tan cong trong du lieu thuc te). Thay vi vay: coi day la
+    # "0 ket noi Zeek", ghi zeek_temp.csv RONG (chi header) va tiep tuc — dac
+    # trung flow van den tu Argus (merge how=outer giu tat ca dong Argus).
     if not os.path.isfile(conn_log):
-        raise RuntimeError(
-            f"Zeek khong sinh ra conn.log tai '{conn_log}'. "
-            f"Kiem tra file PCAP co chua traffic hop le khong."
-        )
+        logger.warning(
+            "Zeek khong sinh conn.log tai '%s' (segment co the khong co ket noi "
+            "TCP/UDP hop le). Tiep tuc voi dac trung Argus, Zeek rong.", conn_log)
+        empty_cols = [
+            "id.orig_h", "id.resp_h", "id.orig_p", "id.resp_p",
+            "proto", "service", "conn_state", "orig_l2_addr", "resp_l2_addr",
+            "trans_depth", "res_bdy_len", "is_ftp_login", "http_method", "ftp_cmd",
+        ]
+        with open(zeek_csv, "w", encoding="utf-8", newline="") as f_out:
+            csv.writer(f_out).writerow(empty_cols)
+        return zeek_csv
 
     logger.info("Tim thay conn.log: %s", conn_log)
 

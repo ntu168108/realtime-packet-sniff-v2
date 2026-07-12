@@ -164,25 +164,27 @@ def process_pcap(pcap_path: str) -> bool:
                 f"add_features khong sinh ra file mong doi: {dos_features_csv}"
             )
 
-        # --- Buoc 3: Chay 7 filter in-process ----------------------------
-        logger.info("BUOC 3/4: Chay %d filter phan loai", len(FILTERS))
+        # --- Buoc 3: Phan loai HOP NHAT (1 flow -> dung 1 nhan) -----------
+        # Truoc day: chay 7 filter DOC LAP, moi filter tu quyet dinh predicted_class
+        # ma khong so sanh voi nhau (khong argmax). Hau qua tren traffic THAT:
+        #   * DoS bi bo lot 100% (nguong UNSW-NB15 sttl>=142.5 / rate>=112k khong
+        #     bao gio dat voi flood --rand-source bi bam thanh flow 1-goi rate=0).
+        #   * 1 flow flood 1-goi trung ca Fuzzers LAN Reconnaissance cung luc ->
+        #     bi dem 7 lan trong flows_all (Merge).
+        # Bay gio: unified_classifier cham diem 6 ho + phat hien DoS (cong don +
+        # cong volumetric cap segment) roi HOP NHAT ve dung 1 nhan/flow, ghi ra 7
+        # CSV per-family (nhan chi hien o dung 1 bang). Schema/sink KHONG doi.
+        logger.info("BUOC 3/4: Phan loai hop nhat (unified_classifier)")
         if str(MODULE_PHANLOAI) not in sys.path:
             sys.path.insert(0, str(MODULE_PHANLOAI))
-        from family_filter import run_family  # type: ignore
         failed_filters = []
-        for i, class_name in enumerate(FILTERS, 1):
-            try:
-                logger.info("  --- [%d/%d] %s ---", i, len(FILTERS), class_name)
-                # Build output path same as filter_<Name>_features convention
-                base = dos_features_csv.stem.replace("_dos_features", "")
-                out_csv = (
-                    MODULE_PHANLOAI / ".." / "CSV" / f"Filter_{class_name}_feature"
-                    / f"{base}_{class_name.lower()}_features.csv"
-                )
-                run_family(class_name, str(dos_features_csv), str(out_csv))
-            except Exception as exc:
-                logger.error("  Filter loi: %s (%s)", class_name, exc)
-                failed_filters.append(class_name)
+        try:
+            from unified_classifier import write_family_csvs  # type: ignore
+            csv_root = MODULE_PHANLOAI / ".." / "CSV"
+            write_family_csvs(str(dos_features_csv), str(csv_root))
+        except Exception as exc:
+            logger.exception("  Phan loai hop nhat loi: %s", exc)
+            failed_filters = list(FILTERS)
 
         # --- Buoc 4: Chay DoS Classification Engine (dos_classifier.py) --
         logger.info("BUOC 4/4: DoS Classification Engine (dos_classifier.py)")

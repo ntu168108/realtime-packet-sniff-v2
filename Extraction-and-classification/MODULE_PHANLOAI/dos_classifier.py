@@ -358,13 +358,16 @@ def _precompute_conditions(
         (srcip_arr == '0.0.0.0')
         | (srcip_arr == '255.255.255.255')
     )
-    # Multicast: 224.0.0.0/4 hoặc IPv6 ff::
-    _srcip_str = srcip_arr.astype(str)
-    is_multicast = np.zeros(len(_srcip_str), dtype=bool)
-    for _prefix in ('224.', '225.', '226.', '227.', '228.', '229.',
-                    '230.', '231.', '232.', '233.', '234.', '235.',
-                    '236.', '237.', '238.', '239.', 'ff'):
-        is_multicast |= np.char.startswith(_srcip_str, _prefix)
+    # Multicast: 224.0.0.0/4 (IPv4 224.-239.) hoặc IPv6 ff::
+    # LƯU Ý: dùng pandas .str thay cho np.char.startswith — np.char yêu cầu mảng
+    # kiểu <U (fixed-width unicode); mảng srcip là object dtype nên np.char ném
+    # UFuncNoLoopError trên NumPy >= 2.0. pandas .str.match/.startswith hoạt động
+    # với mọi phiên bản NumPy và tự bỏ qua NaN an toàn.
+    _srcip_ser = pd.Series(srcip_arr, dtype="object").astype(str)
+    is_multicast = (
+        _srcip_ser.str.match(r"^(22[4-9]|23[0-9])\.").fillna(False)
+        | _srcip_ser.str.startswith("ff")
+    ).to_numpy(dtype=bool)
     # UDP nghi ngờ = UDP nhưng KHÔNG phải mDNS/DHCP/broadcast/multicast
     is_udp_suspect = is_udp & ~is_mdns & ~is_dhcp & ~is_broadcast & ~is_multicast
 

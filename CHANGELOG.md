@@ -2,6 +2,63 @@
 
 All notable changes to `realtime-packet-sniff-v2` are documented in this file.
 
+## [Unreleased] - fix/classification-accuracy-real-traffic
+
+Xác thực bằng thực nghiệm tấn công thật (Kali `192.168.106.60` → Ubuntu VM
+`192.168.101.135`, 11 họ: baseline/DoS×4/Exploits/Fuzzers/Generic/Analysis/
+Reconnaissance/Shellcode) rồi đối chiếu `flows_all` với ground-truth pcap. Hệ
+thu thập (Argus/Zeek) hoạt động đúng, nhưng **tầng phân loại sai gần như tuyệt
+đối**: DoS 0/65.356 flow flood, tổng đúng-nhãn-họ 0,076%. Bản này sửa tận gốc.
+
+### Fixed — phân loại đúng trên traffic thật
+- **DoS bị bỏ lọt 100%.** Ngưỡng `signatures/dos.json` kế thừa UNSW-NB15
+  (`sttl>=142.5`, `sload>=44.7M`, `rate>=112.841`) giả định traffic đã spoofed
+  TTL / nhiều gói. Flood `hping3 --rand-source` thật bị Argus gộp thành flow
+  **1 gói** (`rate=0`, `sload=0`, `sttl=64`) nên KHÔNG bao giờ chạm ngưỡng. Lõi
+  `dos_classifier.py` (chấm điểm CỘNG DỒN theo `state/synack/dttl/dbytes`) bắt
+  được flood 1-gói nhưng chỉ IN ra terminal, không ghi `predicted_class`.
+  → Thêm **`MODULE_PHANLOAI/unified_classifier.py`**: dùng lõi cộng dồn + **cổng
+  volumetric cấp segment** (đếm số flow flood-like tới cùng `dstip`) rồi ghi nhãn
+  DoS thật vào ClickHouse. Kết quả trên dữ liệu thật: **DoS 0% → 100%**.
+- **1 flow mang nhiều nhãn cùng lúc → đếm 7 lần.** 7 filter chạy độc lập, không
+  argmax; 1 flow flood 1-gói trúng cả Fuzzers VÀ Reconnaissance. `flows_all` là
+  Merge của 7 bảng nên flow đó xuất hiện tới 7 dòng. → unified_classifier **hợp
+  nhất về đúng 1 nhãn/flow** theo ưu tiên (DoS > Exploits > Shellcode > Generic >
+  Analysis > Reconnaissance > Fuzzers), rồi ghi 7 CSV per-family với nhãn tấn công
+  chỉ ở đúng 1 bảng. Schema/sink/Grafana KHÔNG đổi.
+- **False-positive khổng lồ trên traffic nền LAN thật** (86,8% flow benign bị gắn
+  cờ). Chữ ký NB15 chỉ định nghĩa cho tcp/udp/icmp nhưng khớp cả frame L2
+  (ARP/STP/ethertype số/ipv6-icmp), mDNS/SSDP multicast (sttl=255), DNS, và
+  download HTTPS ra ngoài. → Thêm 3 cổng nguyên tắc: chỉ phân loại họ trên IP
+  transport thật; loại hạ tầng LAN benign (multicast/broadcast/mDNS/SSDP/DHCP/
+  NetBIOS/DNS/NTP); và mô hình đe doạ LAN (`dttl>=FAMILY_MIN_DTTL` hoặc one-way —
+  tấn công nhắm host nội bộ ít hop). **FP benign 86,8% → 0,6%**, recall attack
+  không đổi (DoS 100%, Exploits 76,7%).
+- **`predicted_class = 'DoS'` toàn false-positive.** 2.808/2.808 flow từng gắn
+  DoS đều là mDNS/STP benign, 0 liên quan tấn công. `dos_classifier.py` chỉ loại
+  multicast theo `srcip`, bỏ sót đích multicast (SSDP `239.255.255.250`). → Vá
+  loại đích multicast/broadcast khỏi DoS.
+- **`dos_classifier.py` crash trên NumPy ≥ 2.0** (`np.char.startswith` trên mảng
+  object dtype ném `UFuncNoLoopError`; box chạy numpy 2.2.6). → Thay bằng pandas
+  `.str` (bất biến theo phiên bản NumPy).
+- **Zeek làm hỏng cả segment khi không sinh `conn.log`** (segment chỉ có
+  ARP/STP/gói dị dạng → `RuntimeError` → mất trắng segment; 2 segment bị mất ngay
+  sau đợt tấn công trong dữ liệu thật). → Ghi `zeek_temp.csv` rỗng và tiếp tục với
+  đặc trưng Argus (merge `how=outer`).
+- **Cột họ trong `pipeline_runs` luôn bằng nhau, `total_flows` = 7×.**
+  `insert_family` trả về tổng số dòng (mọi bảng đều chứa toàn bộ flow) nên
+  dos/exploits/... đều = N và total = 7N — vô nghĩa. → Trả về **số detection thật**
+  (`is_attack=1`) của từng họ; với mô hình 1-nhãn, `total_flows` = tổng flow tấn
+  công thật trong segment.
+
+### Added
+- `MODULE_PHANLOAI/unified_classifier.py` — bộ phân loại hợp nhất 1-nhãn/flow +
+  phát hiện DoS volumetric. Cấu hình qua env: `DOS_MIN_FLOWS_PER_DST` (40),
+  `DOS_HIGH_RATE` (5000), `FAMILY_MIN_DTTL` (60), `DOS_SYN/UDP/ICMP_THRESHOLD`.
+- `MODULE_PHANLOAI/tests/test_unified_classifier.py` — 9 test bám kịch bản traffic
+  thật (flood 1-gói→DoS, mDNS/SSDP→Normal, HTTPS ngoài→Normal, exploit nội bộ→
+  Exploits, L2→Normal, single-label, FP thấp).
+
 ## [Unreleased] - fix/ec-pipeline-real-data-bugs
 
 ### Fixed

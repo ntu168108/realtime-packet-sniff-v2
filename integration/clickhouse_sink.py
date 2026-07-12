@@ -175,6 +175,7 @@ class ClickHouseSink:
         # Build rows.
         rows: List[List[Any]] = []
         skipped = 0
+        n_attack = 0  # số flow ĐƯỢC HỌ NÀY nhận (is_attack=1) — con số audit đúng
         for _, r in df.iterrows():
             # Guard chất lượng: loại dòng giả/bất khả thi (broadcast-src-MAC hoặc
             # feature toàn 0). Nếu pipeline lại nạp dữ liệu mẫu, số này sẽ dựng lên.
@@ -192,6 +193,7 @@ class ClickHouseSink:
             # "Normal" (case-insensitive) is the only benign label; everything
             # else is an attack.
             is_attack = 0 if subtype.lower() == "normal" else 1
+            n_attack += is_attack
             audit_values = [
                 ts,
                 str(meta.get("segment_id", "")),
@@ -230,13 +232,20 @@ class ClickHouseSink:
             total += len(batch)
 
         logger.info(
-            "insert_family family=%s csv=%s rows=%d segment_id=%s",
+            "insert_family family=%s csv=%s rows=%d detections=%d segment_id=%s",
             family,
             csv_path,
             total,
+            n_attack,
             meta.get("segment_id", ""),
         )
-        return total
+        # Trả về SỐ DETECTION của họ này (is_attack=1), KHÔNG phải tổng số dòng.
+        # Trước đây trả tổng số dòng nên cột dos/exploits/... trong pipeline_runs
+        # luôn BẰNG NHAU (= N mỗi họ) và total_flows = 7×N — vô nghĩa. Với mô hình
+        # nhãn hợp nhất (1 flow chỉ là attack ở đúng 1 họ), trả về n_attack khiến
+        # mỗi cột phản ánh đúng số flow HỌ ĐÓ bắt được, và total_flows = tổng số
+        # flow tấn công thật trong segment.
+        return n_attack
 
     # ------------------------------------------------------------------
     def insert_run(self, run: Dict[str, Any]) -> None:

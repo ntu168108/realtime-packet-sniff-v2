@@ -254,6 +254,67 @@ Mở trình duyệt: `http://<IP-máy-chủ>:3000`
 
 ---
 
+## 11. Cập nhật bộ phân loại (unified_classifier) & hiệu chỉnh
+
+Từ bản `fix/classification-accuracy-real-traffic`, tầng phân loại dùng
+`Extraction-and-classification/MODULE_PHANLOAI/unified_classifier.py` — hợp nhất
+1 nhãn/flow + phát hiện DoS volumetric. **Không đổi schema/sink/Grafana**, nên
+triển khai lại chỉ là cập nhật code Python + restart `ec-consumer`.
+
+### 11.1 Triển khai lại
+
+```bash
+cd ~/realtime-packet-sniff-v2
+git fetch origin
+git checkout fix/classification-accuracy-real-traffic   # hoặc: git pull khi đã merge vào main
+# KHÔNG cần đổi ClickHouse: schema/DDL giữ nguyên. KHÔNG cần cài thêm dependency.
+sudo systemctl restart ec-consumer
+sudo journalctl -u ec-consumer -f      # theo dõi vài segment mới
+```
+
+Các segment MỚI (đến sau khi restart) sẽ được gán nhãn bằng bộ phân loại mới.
+Dữ liệu CŨ trong ClickHouse giữ nguyên nhãn cũ — nếu cần gán lại, replay pcap gốc
+(mục 10.3) hoặc `TRUNCATE` các bảng `flows_*` rồi replay.
+
+### 11.2 Nghiệm thu nhanh sau khi triển khai
+
+```bash
+# 1) DoS phải xuất hiện với subtype thật (SYN/UDP/ICMP), KHÔNG chỉ mDNS/STP:
+clickhouse-client --query \
+  "SELECT attack_subtype, count() FROM network_ids.flows_all
+   WHERE attack_family='dos' AND is_attack=1
+   GROUP BY attack_subtype"
+
+# 2) Kiểm tra flow flood tới victim đã là DoS (thay IP victim của bạn):
+clickhouse-client --query \
+  "SELECT predicted_class, count() FROM network_ids.flows_all
+   WHERE dstip='192.168.101.135' GROUP BY predicted_class ORDER BY count() DESC"
+
+# 3) mDNS/SSDP KHÔNG còn bị gắn DoS (kỳ vọng 0):
+clickhouse-client --query \
+  "SELECT count() FROM network_ids.flows_all
+   WHERE predicted_class='DoS' AND (dport IN (5353,1900) OR dstip LIKE '239.%' OR dstip LIKE '224.%')"
+```
+
+### 11.3 Hiệu chỉnh (tùy môi trường mạng) qua biến môi trường
+
+Đặt trong unit file `deploy/systemd/ec-consumer.service` (thêm dòng
+`Environment=...`) rồi `sudo systemctl daemon-reload && sudo systemctl restart ec-consumer`:
+
+| Biến | Mặc định | Ý nghĩa / khi nào chỉnh |
+|---|---|---|
+| `DOS_MIN_FLOWS_PER_DST` | `40` | Số flow flood-like tối thiểu tới cùng 1 đích/segment để coi là flood. Tăng nếu mạng có burst benign lớn (VD nhiều client tới 1 server); giảm nếu muốn nhạy hơn. |
+| `DOS_HIGH_RATE` | `5000` | Ngưỡng pps của 1 flow đơn để tự coi là flood (flood cổ điển không spoof). |
+| `FAMILY_MIN_DTTL` | `60` | "Đích ở gần" (ít hop) mới gán nhãn HỌ — chặn false-positive từ traffic đi ra internet. Đặt `0` để TẮT nếu bạn giám sát cả traffic tới host ở xa. |
+| `DOS_SYN_THRESHOLD` / `DOS_UDP_THRESHOLD` / `DOS_ICMP_THRESHOLD` | `42/32/28` | Ngưỡng điểm cộng dồn per-flow cho từng subtype DoS. |
+
+> **Lưu ý ngưỡng cũ:** `signatures/dos.json`, `generic.json`, `shellcode.json`
+> vẫn dùng ngưỡng UNSW-NB15 (`sttl>=142.5/200`) cho các cột `*_score`, nhưng
+> QUYẾT ĐỊNH nhãn giờ do `unified_classifier` đảm nhiệm. Nếu bạn tự hiệu chỉnh
+> chữ ký cho traffic thật, sửa các file JSON đó — điểm sẽ được unified đọc lại.
+
+---
+
 ## Vận hành hàng ngày
 
 ### Khởi động / dừng / restart
