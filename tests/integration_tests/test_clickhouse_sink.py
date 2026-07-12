@@ -92,7 +92,10 @@ def test_sink_batches_and_emits_typed_rows(tmp_path):
             "pcap_file": "p1",
         },
     )
-    assert n == 3
+    # insert_family trả về SỐ DETECTION (is_attack=1), không phải tổng số dòng.
+    # Input có predicted_class=["","","Attack"] → chỉ 1 flow là attack.
+    # (Cả 3 dòng vẫn được INSERT — xem kiểm tra `rows` bên dưới.)
+    assert n == 1
     assert len(fake.execs) == 1
     call = fake.execs[0]
     sql = call["sql"]
@@ -143,11 +146,12 @@ def test_sink_batches_and_emits_typed_rows(tmp_path):
 def test_sink_handles_missing_columns(tmp_path):
     """A CSV that lacks columns from CSV_COLUMNS must not crash."""
     csv = tmp_path / "x_dos_features.csv"
-    df = pd.DataFrame({"srcip": ["10.0.0.1"], "dstip": ["10.0.0.2"], "sport": [80]})
+    df = pd.DataFrame({"srcip": ["10.0.0.1"], "dstip": ["10.0.0.2"], "sport": [80],
+                       "predicted_class": ["DoS"]})
     df.to_csv(csv, index=False)
     sink, fake = _make_sink()
     n = sink.insert_family("dos", str(csv), {"segment_id": "S2"})
-    assert n == 1
+    assert n == 1  # 1 detection (is_attack=1)
     assert len(fake.execs) == 1
 
 
@@ -163,12 +167,13 @@ def test_sink_empty_csv_returns_zero(tmp_path):
 def test_sink_batches_large_csv(tmp_path):
     csv = tmp_path / "big.csv"
     df = pd.DataFrame(
-        {"srcip": ["10.0.0.1"] * 25, "dstip": ["10.0.0.2"] * 25, "sport": list(range(25))}
+        {"srcip": ["10.0.0.1"] * 25, "dstip": ["10.0.0.2"] * 25, "sport": list(range(25)),
+         "predicted_class": ["DoS"] * 25}
     )
     df.to_csv(csv, index=False)
     sink, fake = _make_sink()
     n = sink.insert_family("dos", str(csv), {"segment_id": "S4"})
-    assert n == 25
+    assert n == 25  # 25 detections
     # 25 rows / batch=10 -> 3 batches
     assert len(fake.execs) == 3
     assert len(fake.execs[0]["rows"]) == 10
@@ -195,13 +200,14 @@ def test_sink_rejects_placeholder_fake_flows(tmp_path):
             "sbytes": [0, 800, 0],
             "dbytes": [0, 900, 0],
             "dur": [0.0, 1.5, 0.0],
+            "predicted_class": ["DoS", "DoS", "DoS"],
         }
     )
     df.to_csv(csv, index=False)
     sink, fake = _make_sink()
     n = sink.insert_family("dos", str(csv), {"segment_id": "S6"})
     # row0: broadcast-src-MAC -> dropped; row2: all-zero volume -> dropped;
-    # row1: real flow -> kept.
+    # row1: real flow (attack) -> kept & counted as 1 detection.
     assert n == 1
     assert len(fake.execs) == 1
     assert len(fake.execs[0]["rows"]) == 1

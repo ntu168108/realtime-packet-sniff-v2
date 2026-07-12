@@ -128,12 +128,30 @@ The schema is **generated** from
 [`integration/schema.py`](https://github.com/ntu168108/realtime-packet-sniff-v2/blob/main/integration/schema.py) —
 do not hand-edit column types.
 
+### Classification: one label per flow (unified_classifier)
+
+Labels are assigned by
+[`MODULE_PHANLOAI/unified_classifier.py`](https://github.com/ntu168108/realtime-packet-sniff-v2/blob/main/Extraction-and-classification/MODULE_PHANLOAI/unified_classifier.py),
+which scores the six per-flow families **and** detects DoS (additive per-flow
+score + a **segment-level volumetric gate**: count of flood-like flows per
+destination), then resolves each physical flow to a **single** `predicted_class`
+by priority (`DoS > Exploits > Shellcode > Generic > Analysis > Reconnaissance >
+Fuzzers > Normal`). It writes the seven per-family CSVs so that a flow carries its
+attack label in **exactly one** table. This replaced seven independent filters that
+scored each family in isolation (no argmax), which on real traffic left DoS
+undetected and made one flow match several families at once (7× duplication in
+`flows_all`). Non-IP frames (ARP/STP), benign LAN infra (multicast/broadcast,
+mDNS/SSDP/DHCP/NetBIOS/DNS/NTP), and far/external destinations are excluded from
+family labels. See CHANGELOG `fix/classification-accuracy-real-traffic`.
+
 ### Per-family tables
 
 Seven sibling tables — `flows_dos`, `flows_exploits`, `flows_fuzzers`,
 `flows_generic`, `flows_analysis`, `flows_reconnaissance`,
 `flows_shellcode` — share the same column set: 8 audit columns plus 46
-feature columns from the union of all per-family CSVs.
+feature columns from the union of all per-family CSVs. Each table still stores
+every flow of the segment (attack rows labelled that family, the rest `Normal`);
+with single-label routing, a flow is `is_attack=1` in at most one table.
 
 Engine: **`ReplacingMergeTree`**, partitioned by
 `toYYYYMMDD(ts)`, ordered by:
