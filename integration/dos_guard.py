@@ -145,18 +145,60 @@ class DosGuard:
         )
         return self.dos_active
 
+    def _note_dst(self, dst) -> None:
+        """Đếm 1 gói theo đích cho cửa sổ 1 giây. Chặn phình bộ nhớ khi bị flood
+        spoofed-DESTINATION bằng trần số key (bỏ qua key mới khi đầy — các đích
+        'nóng' đã có mặt vẫn được đếm tiếp)."""
+        c = self._dst_counts
+        if dst in c:
+            c[dst] += 1
+        elif len(c) < self._dst_cap:
+            c[dst] = 1
+        # else: counter đầy -> bỏ qua đích mới (đủ để nhận diện đích nóng đã thấy)
+
     def _update_hot_victim(self, pps: float) -> None:
-        """Placeholder — Task 2 thay bằng logic per-destination thật."""
+        """Từ cửa sổ đếm 1 giây, xác định 'đích nóng' (victim) nếu lưu lượng dồn
+        tập trung: đích chiếm >= victim_share tổng gói VÀ vượt victim_min_pps.
+        Đặt tỉ lệ cắt tải riêng cho victim để kéo tốc độ tới nó về ~target_pps.
+        Reset cửa sổ đếm sau mỗi lần gọi."""
         self._hot_victim = None
         self._victim_sample_every = 1
+        counts = self._dst_counts
+        total = 0
+        top_dst = None
+        top_n = 0
+        for k, v in counts.items():
+            total += v
+            if v > top_n:
+                top_n, top_dst = v, k
+        if (
+            self.victim_share > 0.0
+            and total > 0
+            and top_dst is not None
+            and (top_n / total) >= self.victim_share
+            and top_n >= self.victim_min_pps
+        ):
+            self._hot_victim = top_dst
+            self._victim_sample_every = min(
+                self.max_drop, max(2, round(top_n / self.target_pps))
+            )
         self._dst_counts = {}
 
-    def should_keep(self, seq: int) -> bool:
-        """Quyết định giữ gói (True) hay bỏ (False). Cực rẻ, gọi mỗi gói.
+    def should_keep(self, seq: int, dst=None) -> bool:
+        """Quyết định giữ (True) / bỏ (False) một gói. Cực rẻ, gọi mỗi gói.
 
         Args:
             seq: số thứ tự tăng dần của gói (PacketInfo.stt).
+            dst: khoá đích (bytes IPv4) để cắt tải CÓ CHỌN LỌC, hoặc None để dùng
+                 tỉ lệ cắt tải toàn cục. Producer chỉ truyền dst khi `dos_active`
+                 (fast path bình thường: dst=None, không tốn gì).
         """
+        if dst is not None:
+            self._note_dst(dst)
+            if self._hot_victim is not None:
+                # Chỉ cắt tải luồng đổ vào ĐÍCH NÓNG; đích khác giữ nguyên 1/1.
+                n = self._victim_sample_every if dst == self._hot_victim else 1
+                return n == 1 or (seq % n == 0)
         n = self.sample_every
         return n == 1 or (seq % n == 0)
 
@@ -165,6 +207,9 @@ class DosGuard:
         return {
             "dos_active": self.dos_active,
             "sample_every": self.sample_every,
+            "bp_level": self._bp_level,
             "last_pps": round(self.last_pps, 1),
             "keep_ratio": round(1.0 / self.sample_every, 4),
+            "hot_victim": self._hot_victim,
+            "victim_sample_every": self._victim_sample_every,
         }
