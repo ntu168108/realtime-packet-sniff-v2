@@ -2,10 +2,19 @@ import { useCallback, useEffect, useState, useRef } from 'react';
 import { useApi } from '../hooks/useApi';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { PacketTableInner } from '../components/PacketTable';
+import { ProtocolBars } from '../components/ProtocolBars';
 import { ApiError } from '../hooks/useApi';
-import type { InterfaceInfo, CaptureStatus, PacketRow, LastConfig } from '../types';
+import type { InterfaceInfo, CaptureStatus, PacketRow, LastConfig, TopTalker } from '../types';
 
 const MAX_PACKETS = 5000;
+
+function fmtDuration(seconds: number): string {
+  const s = Math.floor(seconds);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return h > 0 ? `${h}h ${m}m ${sec}s` : m > 0 ? `${m}m ${sec}s` : `${sec}s`;
+}
 
 export default function Capture() {
   const api = useApi();
@@ -24,6 +33,8 @@ export default function Capture() {
   const [diagnostic, setDiagnostic] = useState<string | null>(null);
   const [lastConfig, setLastConfig] = useState<LastConfig | null>(null);
   const [loading, setLoading] = useState(true);
+  const [deepDecode, setDeepDecode] = useState(false);
+  const [conversations, setConversations] = useState<TopTalker[]>([]);
 
   // Stats WS for status
   useWebSocket<{ type: string; data: CaptureStatus }>('/ws/stats', (msg) => {
@@ -79,9 +90,45 @@ export default function Capture() {
       } finally {
         setLoading(false);
       }
+      try {
+        const dd = await api.get<{ enabled: boolean }>('/api/capture/deep-decode');
+        setDeepDecode(dd.enabled);
+      } catch {
+        /* leave default */
+      }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Live top conversations from the capture engine itself (not the ClickHouse-
+  // classified ones on the Dashboard) — only meaningful while running.
+  useEffect(() => {
+    if (!status?.running) { setConversations([]); return; }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const c = await api.get<TopTalker[]>('/api/capture/conversations?n=10');
+        if (!cancelled) setConversations(c);
+      } catch {
+        /* transient — keep last value */
+      }
+    };
+    load();
+    const t = setInterval(load, 3000);
+    return () => { cancelled = true; clearInterval(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status?.running]);
+
+  async function toggleDeepDecode() {
+    const next = !deepDecode;
+    setDeepDecode(next); // optimistic
+    try {
+      await api.post('/api/capture/deep-decode', { enabled: next });
+    } catch (e: unknown) {
+      setDeepDecode(!next); // revert on failure
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  }
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -225,6 +272,14 @@ export default function Capture() {
             />
             auto-restore on reboot
           </label>
+          <label className="muted" style={{ display: 'flex', alignItems: 'center', gap: 4 }} title="Adds DNS/HTTP/TLS SNI/DHCP/NTP/QUIC to the Info column. Costs more CPU per packet.">
+            <input
+              type="checkbox"
+              checked={deepDecode}
+              onChange={toggleDeepDecode}
+            />
+            deep decode (L7)
+          </label>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
             {!status?.running ? (
               <button className="btn" onClick={start} disabled={!iface}>
@@ -243,23 +298,58 @@ export default function Capture() {
           </div>
         </div>
         {status && (
-          <div style={{ marginTop: 12, display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-            <span className={`pill ${status.running ? (status.paused ? 'paused' : 'active') : 'stopped'}`}>
-              {status.running ? (status.paused ? 'paused' : 'running') : 'stopped'}
-            </span>
-            <span className="mono">
-              <strong>{status.packets.toLocaleString()}</strong> packets
-            </span>
-            <span className="mono">
-              <strong>{status.pps.toLocaleString()}</strong> pps
-            </span>
-            <span className="mono">
-              <strong>{(status.bps / 1024).toFixed(1)}</strong> KB/s
-            </span>
-            <span className="mono">
-              <strong>{status.dropped.toLocaleString()}</strong> dropped
-            </span>
-          </div>
+          <>
+            <div style={{ marginTop: 12, display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span className={`pill ${status.running ? (status.paused ? 'paused' : 'active') : 'stopped'}`}>
+                {status.running ? (status.paused ? 'paused' : 'running') : 'stopped'}
+              </span>
+              {status.running && (
+                <>
+                  <span className="mono">
+                    on <strong>{status.interface ?? '—'}</strong>
+                  </span>
+                  <span className="mono">
+                    up <strong>{fmtDuration(status.uptime)}</strong>
+                  </span>
+                </>
+              )}
+              <span className="mono">
+                <strong>{status.packets.toLocaleString()}</strong> packets
+              </span>
+              <span className="mono">
+                <strong>{status.pps.toLocaleString()}</strong> pps
+              </span>
+              <span className="mono">
+                <strong>{(status.bps / 1024).toFixed(1)}</strong> KB/s
+              </span>
+              <span className="mono" title="ring-buffer overflow / pcap write backlog">
+                <strong>{status.dropped.toLocaleString()}</strong> dropped
+                {(status.queue_dropped ?? 0) > 0 || (status.write_dropped ?? 0) > 0 ? (
+                  <span className="muted"> (queue {(status.queue_dropped ?? 0).toLocaleString()}, write {(status.write_dropped ?? 0).toLocaleString()})</span>
+                ) : null}
+              </span>
+            </div>
+            {status.running && (status.queue_capacity ?? 0) > 0 && (
+              <div style={{ marginTop: 10 }}>
+                {(() => {
+                  const cap = status.queue_capacity ?? 1;
+                  const size = status.queue_size ?? 0;
+                  const pct = Math.min(100, (size / cap) * 100);
+                  const barColor = pct >= 90 ? 'var(--danger)' : pct >= 60 ? 'var(--warn)' : 'var(--success)';
+                  return (
+                    <>
+                      <div className="gauge-label" style={{ marginBottom: 4 }}>
+                        Ring buffer — {size.toLocaleString()} / {cap.toLocaleString()} ({pct.toFixed(0)}%)
+                      </div>
+                      <div className="proto-bar-track">
+                        <div className="proto-bar-fill" style={{ width: `${pct}%`, background: barColor }} />
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -274,6 +364,33 @@ export default function Capture() {
           onAppend={() => {}}
         />
       </div>
+
+      {status?.running && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
+          <div className="card" style={{ marginBottom: 0 }}>
+            <h2>Protocol breakdown</h2>
+            <ProtocolBars counts={status.protocols ?? {}} />
+          </div>
+          <div className="card" style={{ marginBottom: 0 }}>
+            <h2>Live conversations</h2>
+            <div className="top-talkers">
+              {conversations.map((t) => (
+                <div className="top-row" key={`${t.src}->${t.dst}-${t.proto}`}>
+                  <div className="top-flow">
+                    <span className="muted">{t.proto}</span>&nbsp;
+                    {t.src} → {t.dst}
+                  </div>
+                  <div className="top-bytes">{(t.bytes / 1024).toFixed(1)} KB</div>
+                  <div className="top-pkts">{t.packets.toLocaleString()} pkts</div>
+                </div>
+              ))}
+              {conversations.length === 0 && (
+                <div className="muted" style={{ padding: 8 }}>No conversations yet.</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {lastConfig && (
         <div className="card" style={{ marginTop: 12 }}>

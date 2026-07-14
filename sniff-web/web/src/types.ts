@@ -9,6 +9,8 @@ export interface CaptureStatus {
   running: boolean; paused: boolean;
   interface: string | null; uptime: number;
   packets: number; bytes: number; dropped: number;
+  queue_dropped?: number; write_dropped?: number;
+  queue_size?: number; queue_capacity?: number; queue_dropped_total?: number;
   pps: number; bps: number;
   protocols: Record<string, number>;
   ws_drop_total?: number;

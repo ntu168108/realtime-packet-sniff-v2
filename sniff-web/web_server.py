@@ -377,6 +377,9 @@ from collections import deque
 _loop: Optional[asyncio.AbstractEventLoop] = None
 _pkt_queue: Optional[asyncio.Queue] = None
 _drop_queue: Optional[asyncio.Queue] = None
+# Opt-in L7 decode (DNS/HTTP/TLS/DHCP/NTP/QUIC info) for the live packet table.
+# Off by default: deep decode is CPU-heavier than the fast header-only path.
+_deep_decode_enabled = False
 
 # v0.4.1 — bound on how long a slow WebSocket client can stall the packet
 # broadcast. Without this, a single stuck browser tab freezes _fan_out,
@@ -526,7 +529,7 @@ async def _broadcast_packets():
             except Exception:
                 continue
             try:
-                d = decode_packet(pkt.data, deep=False)
+                d = decode_packet(pkt.data, deep=_deep_decode_enabled)
                 batch.append({
                     "stt": pkt.stt,
                     "ts": pkt.ts_sec + pkt.ts_usec / 1_000_000,
@@ -767,6 +770,18 @@ def api_conversations(n: int = 20, user=Depends(require_user)):
     if not eng or not getattr(eng, "is_running", False):
         return []
     return eng.get_top_conversations(n)
+
+
+@app.get("/api/capture/deep-decode")
+def api_get_deep_decode(user=Depends(require_user)):
+    return {"enabled": _deep_decode_enabled}
+
+
+@app.post("/api/capture/deep-decode")
+def api_set_deep_decode(body: dict, user=Depends(require_user)):
+    global _deep_decode_enabled
+    _deep_decode_enabled = bool(body.get("enabled"))
+    return {"enabled": _deep_decode_enabled}
 
 
 # ---------------------------------------------------------------------------
@@ -1238,6 +1253,8 @@ services_clients: set = set()
 _EMPTY_STATUS = {
     "running": False, "paused": False, "interface": None,
     "packets": 0, "bytes": 0, "dropped": 0,
+    "queue_dropped": 0, "write_dropped": 0,
+    "queue_size": 0, "queue_capacity": 0, "queue_dropped_total": 0,
     "pps": 0, "bps": 0, "protocols": {}, "uptime": 0,
 }
 
