@@ -835,7 +835,11 @@ def _clickhouse_counts_safe() -> dict:
         r = query_clickhouse("SELECT count() FROM network_ids.flows_all", 1)
         out["flows_all"] = r["rows"][0][0] if r["rows"] else 0
         for fam in families:
-            r = query_clickhouse(f"SELECT count() FROM network_ids.flows_{fam}", 1)
+            # All 7 flows_<family> tables score the SAME underlying flow set
+            # (each row appears in every table), so a plain count() is always
+            # identical across families and tells you nothing about
+            # classification. is_attack=1 is what actually differs per family.
+            r = query_clickhouse(f"SELECT count() FROM network_ids.flows_{fam} WHERE is_attack = 1", 1)
             out[f"flows_{fam}"] = r["rows"][0][0] if r["rows"] else 0
         r = query_clickhouse("SELECT count() FROM network_ids.pipeline_runs", 1)
         out["pipeline_runs"] = r["rows"][0][0] if r["rows"] else 0
@@ -1044,7 +1048,10 @@ def api_clickhouse_counts(user=Depends(require_user)):
         result = query_clickhouse("SELECT count() FROM network_ids.flows_all", 1)
         out["flows_all"] = result["rows"][0][0] if result["rows"] else 0
         for fam in families:
-            r = query_clickhouse(f"SELECT count() FROM network_ids.flows_{fam}", 1)
+            # See _clickhouse_counts_safe(): count of flows classified as an
+            # attack of THIS family, not a raw row count (which is identical
+            # across all 7 tables since they share the same flow set).
+            r = query_clickhouse(f"SELECT count() FROM network_ids.flows_{fam} WHERE is_attack = 1", 1)
             out[f"flows_{fam}"] = r["rows"][0][0] if r["rows"] else 0
         r = query_clickhouse("SELECT count() FROM network_ids.pipeline_runs", 1)
         out["pipeline_runs"] = r["rows"][0][0] if r["rows"] else 0

@@ -165,15 +165,18 @@ export default function Dashboard() {
       <div className="dash-zone-charts">
         <div className="card">
           <h2>ClickHouse flow counts</h2>
+          <div className="muted" style={{ fontSize: 11, marginBottom: 8, marginTop: -4 }}>
+            flows_all = total flows ingested. Per-family cards below = flows classified as that family's attack (is_attack=1), not raw row counts.
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 12 }}>
-            <CountCard label="flows_all"          value={summary?.counts?.flows_all ?? null} to="/clickhouse?table=flows_all" size="lg" />
-            <CountCard label="dos"                value={summary?.counts?.flows_dos ?? null} to="/clickhouse?table=flows_dos" />
-            <CountCard label="exploits"           value={summary?.counts?.flows_exploits ?? null} to="/clickhouse?table=flows_exploits" />
-            <CountCard label="fuzzers"            value={summary?.counts?.flows_fuzzers ?? null} to="/clickhouse?table=flows_fuzzers" />
-            <CountCard label="generic"            value={summary?.counts?.flows_generic ?? null} to="/clickhouse?table=flows_generic" />
-            <CountCard label="analysis"           value={summary?.counts?.flows_analysis ?? null} to="/clickhouse?table=flows_analysis" />
-            <CountCard label="reconnaissance"     value={summary?.counts?.flows_reconnaissance ?? null} to="/clickhouse?table=flows_reconnaissance" />
-            <CountCard label="shellcode"          value={summary?.counts?.flows_shellcode ?? null} to="/clickhouse?table=flows_shellcode" />
+            <CountCard label="flows_all (total)"  value={summary?.counts?.flows_all ?? null} to="/clickhouse?table=flows_all" size="lg" />
+            <CountCard label="dos attacks"                value={summary?.counts?.flows_dos ?? null} to="/clickhouse?table=flows_dos" />
+            <CountCard label="exploits attacks"           value={summary?.counts?.flows_exploits ?? null} to="/clickhouse?table=flows_exploits" />
+            <CountCard label="fuzzers attacks"            value={summary?.counts?.flows_fuzzers ?? null} to="/clickhouse?table=flows_fuzzers" />
+            <CountCard label="generic attacks"            value={summary?.counts?.flows_generic ?? null} to="/clickhouse?table=flows_generic" />
+            <CountCard label="analysis attacks"           value={summary?.counts?.flows_analysis ?? null} to="/clickhouse?table=flows_analysis" />
+            <CountCard label="reconnaissance attacks"     value={summary?.counts?.flows_reconnaissance ?? null} to="/clickhouse?table=flows_reconnaissance" />
+            <CountCard label="shellcode attacks"          value={summary?.counts?.flows_shellcode ?? null} to="/clickhouse?table=flows_shellcode" />
             <CountCard label="pipeline_runs"      value={summary?.counts?.pipeline_runs ?? null} to="/clickhouse?table=pipeline_runs" />
           </div>
           {attackSlices.length > 0 && (
