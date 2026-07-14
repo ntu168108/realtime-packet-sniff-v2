@@ -35,12 +35,12 @@ function useCountUp(target: number | null) {
 }
 
 export function CountCard({ label, value, to, size = 'md' }: CountCardProps) {
-  const valueSize = size === 'lg' ? 32 : 24;
+  const valueSize = size === 'lg' ? 40 : 28;
   const display = useCountUp(value);
   const body = (
-    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 0 }}>
-      <div className="muted" style={{ fontSize: 11, textTransform: 'uppercase' }}>{label}</div>
-      <div className="mono" style={{ fontSize: valueSize, color: 'var(--text-bright)', fontWeight: size === 'lg' ? 700 : 400 }}>
+    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 0, padding: 14 }}>
+      <div className="muted" style={{ fontSize: 12, textTransform: 'uppercase' }}>{label}</div>
+      <div className="mono" style={{ fontSize: valueSize, color: 'var(--text-bright)', fontWeight: size === 'lg' ? 700 : 500 }}>
         {display === null ? '—' : display.toLocaleString()}
       </div>
     </div>

@@ -162,10 +162,10 @@ export default function Dashboard() {
       </div>
 
       {/* ---------- ZONE 2 (was 3): ClickHouse counts + protocols — has charts, kept high ---------- */}
-      <div className="dash-zone-bot">
+      <div className="dash-zone-charts">
         <div className="card">
           <h2>ClickHouse flow counts</h2>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 12 }}>
             <CountCard label="flows_all"          value={summary?.counts?.flows_all ?? null} to="/clickhouse?table=flows_all" size="lg" />
             <CountCard label="dos"                value={summary?.counts?.flows_dos ?? null} to="/clickhouse?table=flows_dos" />
             <CountCard label="exploits"           value={summary?.counts?.flows_exploits ?? null} to="/clickhouse?table=flows_exploits" />
@@ -177,10 +177,12 @@ export default function Dashboard() {
             <CountCard label="pipeline_runs"      value={summary?.counts?.pipeline_runs ?? null} to="/clickhouse?table=pipeline_runs" />
           </div>
           {attackSlices.length > 0 && (
-            <div style={{ marginTop: 16 }}>
-              <div className="gauge-label" style={{ marginBottom: 8 }}>Attack family share</div>
+            <div style={{ marginTop: 20 }}>
+              <div className="gauge-label" style={{ marginBottom: 10, fontSize: 13 }}>Attack family share</div>
               <DonutChart
                 slices={attackSlices}
+                size={200}
+                thickness={22}
                 centerValue={totalAttackFlows.toLocaleString()}
                 centerLabel="flows"
                 ariaLabel="attack family breakdown"
@@ -192,11 +194,13 @@ export default function Dashboard() {
           <h2>Protocol breakdown</h2>
           <DonutChart
             slices={protocolSlices}
+            size={200}
+            thickness={22}
             centerValue={totalPackets.toLocaleString()}
             centerLabel="packets"
             ariaLabel="protocol breakdown"
           />
-          <div style={{ marginTop: 16 }}>
+          <div style={{ marginTop: 20 }}>
             <ProtocolBars counts={liveCapture?.protocols ?? summary?.protocols ?? {}} />
           </div>
         </div>
