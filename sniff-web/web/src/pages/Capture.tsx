@@ -17,6 +17,8 @@ export default function Capture() {
   const [promisc, setPromisc] = useState(true);
   const [autoRestore, setAutoRestore] = useState(true);
   const [packets, setPackets] = useState<PacketRow[]>([]);
+  const [autoScroll, setAutoScroll] = useState(true);
+  const [tableFilter, setTableFilter] = useState('');
   const parentRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [diagnostic, setDiagnostic] = useState<string | null>(null);
@@ -264,10 +266,10 @@ export default function Capture() {
       <div className="card" style={{ flex: 1, overflow: 'hidden', padding: 0 }}>
         <PacketTableInner
           packets={packets}
-          filter=""
-          setFilter={() => {}}
-          autoScroll={true}
-          setAutoScroll={() => {}}
+          filter={tableFilter}
+          setFilter={setTableFilter}
+          autoScroll={autoScroll}
+          setAutoScroll={setAutoScroll}
           parentRef={parentRef}
           onAppend={() => {}}
         />
