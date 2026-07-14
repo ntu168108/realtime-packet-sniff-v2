@@ -13,17 +13,7 @@
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
 html, body, #root { height: 100%; overflow: hidden; margin: 0; padding: 0; }
-body { background: var(--bg); color: var(--text); font-family: var(--ui); font-size: 14px; line-height: 1.4; position: relative; }
-/* Ambient vignette + faint scanlines — fixed, pointer-events-none, opacity-only
-   so it never triggers layout/paint cost on scroll (see perf guardrails). */
-body::after {
-  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 1000;
-  background:
-    repeating-linear-gradient(0deg, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px, transparent 1px, transparent 3px),
-    radial-gradient(ellipse at 50% 0%, rgba(74,123,166,0.05), transparent 60%);
-  animation: ambient-breathe 8s ease-in-out infinite;
-}
-@keyframes ambient-breathe { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
+body { background: var(--bg); color: var(--text); font-family: var(--ui); font-size: 14px; line-height: 1.4; }
 .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .app-layout { display: grid; grid-template-columns: 200px 1fr; grid-template-rows: 56px 1fr;
   grid-template-areas: "topbar topbar" "sidebar main"; height: 100vh; }
