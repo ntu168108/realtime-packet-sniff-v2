@@ -2,6 +2,16 @@
 
 All notable changes to `realtime-packet-sniff-v2` are documented in this file.
 
+## [Unreleased] - fix/capture-page-filter-autoscroll
+
+### Fixed
+- **Web UI: search filter and auto-scroll toggle on the Capture page now work.**
+  `sniff-web/web/src/pages/Capture.tsx` was passing `PacketTableInner` a
+  hard-coded `filter=""` / `autoScroll={true}` with no-op setters
+  (`setFilter={() => {}}`, `setAutoScroll={() => {}}`), so typing in the packet
+  search box or toggling auto-scroll had no visible effect. Replaced with real
+  `useState` (`tableFilter`, `autoScroll`) wired to the component's props.
+
 ## [Unreleased] - feat/dosguard-adaptive-backpressure
 
 ### Added
