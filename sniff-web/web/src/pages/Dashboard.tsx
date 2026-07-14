@@ -165,7 +165,20 @@ export default function Dashboard() {
       <div className="dash-zone-charts">
         <div className="card">
           <h2>ClickHouse flow counts</h2>
-          <div className="muted" style={{ fontSize: 11, marginBottom: 8, marginTop: -4 }}>
+          {attackSlices.length > 0 && (
+            <div>
+              <div className="gauge-label" style={{ marginBottom: 10, fontSize: 13 }}>Attack family share</div>
+              <DonutChart
+                slices={attackSlices}
+                size={200}
+                thickness={22}
+                centerValue={totalAttackFlows.toLocaleString()}
+                centerLabel="flows"
+                ariaLabel="attack family breakdown"
+              />
+            </div>
+          )}
+          <div className="muted" style={{ fontSize: 11, marginTop: 16, marginBottom: 8 }}>
             flows_all = total flows ingested. Per-family cards below = flows classified as that family's attack (is_attack=1), not raw row counts.
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 12 }}>
@@ -179,19 +192,6 @@ export default function Dashboard() {
             <CountCard label="shellcode attacks"          value={summary?.counts?.flows_shellcode ?? null} to="/clickhouse?table=flows_shellcode" />
             <CountCard label="pipeline_runs"      value={summary?.counts?.pipeline_runs ?? null} to="/clickhouse?table=pipeline_runs" />
           </div>
-          {attackSlices.length > 0 && (
-            <div style={{ marginTop: 20 }}>
-              <div className="gauge-label" style={{ marginBottom: 10, fontSize: 13 }}>Attack family share</div>
-              <DonutChart
-                slices={attackSlices}
-                size={200}
-                thickness={22}
-                centerValue={totalAttackFlows.toLocaleString()}
-                centerLabel="flows"
-                ariaLabel="attack family breakdown"
-              />
-            </div>
-          )}
         </div>
         <div className="card">
           <h2>Protocol breakdown</h2>
