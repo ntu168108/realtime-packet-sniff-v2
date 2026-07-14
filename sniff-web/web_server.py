@@ -532,6 +532,8 @@ async def _broadcast_packets():
                     "ts": pkt.ts_sec + pkt.ts_usec / 1_000_000,
                     "src": d.src_addr, "dst": d.dst_addr,
                     "src_port": d.src_port, "dst_port": d.dst_port,
+                    "src_mac": d.ethernet.src_mac if d.ethernet else "",
+                    "dst_mac": d.ethernet.dst_mac if d.ethernet else "",
                     "proto": d.protocol_name, "len": pkt.caplen,
                     "info": (d.info_str or "")[:160],
                 })

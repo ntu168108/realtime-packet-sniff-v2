@@ -34,14 +34,14 @@ export function PacketTableInner({
 }: InnerProps) {
   const filtered = filter
     ? packets.filter((p) =>
-        [p.src, p.dst, p.proto, p.info].some((s) => s.toLowerCase().includes(filter.toLowerCase()))
+        [p.src, p.dst, p.proto, p.info, p.src_mac, p.dst_mac].some((s) => (s ?? '').toLowerCase().includes(filter.toLowerCase()))
       )
     : packets;
 
   const virtualizer = useVirtualizer({
     count: filtered.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 24,
+    estimateSize: () => 34,
     overscan: 10,
   });
 
@@ -72,7 +72,7 @@ export function PacketTableInner({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: '60px 100px 160px 160px 70px 60px 1fr',
+          gridTemplateColumns: '60px 100px 190px 190px 70px 60px 1fr',
           padding: '6px 8px',
           background: 'var(--surf2)',
           fontSize: 11,
@@ -106,7 +106,7 @@ export function PacketTableInner({
                   height: `${v.size}px`,
                   transform: `translateY(${v.start}px)`,
                   display: 'grid',
-                  gridTemplateColumns: '60px 100px 160px 160px 70px 60px 1fr',
+                  gridTemplateColumns: '60px 100px 190px 190px 70px 60px 1fr',
                   padding: '0 8px',
                   alignItems: 'center',
                   fontSize: 12,
@@ -117,13 +117,25 @@ export function PacketTableInner({
                   {p.stt}
                 </span>
                 <span className="mono">{time}</span>
-                <span className="mono">
+                <span className="mono" style={{ lineHeight: 1.3 }}>
                   {p.src}
                   {p.src_port ? `:${p.src_port}` : ''}
+                  {p.src_mac && (
+                    <>
+                      <br />
+                      <span className="muted" style={{ fontSize: 10 }}>{p.src_mac}</span>
+                    </>
+                  )}
                 </span>
-                <span className="mono">
+                <span className="mono" style={{ lineHeight: 1.3 }}>
                   {p.dst}
                   {p.dst_port ? `:${p.dst_port}` : ''}
+                  {p.dst_mac && (
+                    <>
+                      <br />
+                      <span className="muted" style={{ fontSize: 10 }}>{p.dst_mac}</span>
+                    </>
+                  )}
                 </span>
                 <span className="mono" style={{ color }}>
                   {p.proto}

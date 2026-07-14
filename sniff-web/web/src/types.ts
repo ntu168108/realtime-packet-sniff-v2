@@ -2,6 +2,7 @@ export interface PacketRow {
   stt: number; ts: number;
   src: string; dst: string;
   src_port: number; dst_port: number;
+  src_mac?: string; dst_mac?: string;
   proto: string; len: number; info: string;
 }
 export interface CaptureStatus {
