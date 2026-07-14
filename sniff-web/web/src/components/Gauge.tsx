@@ -62,12 +62,11 @@ export function Gauge({
     return `M${sx},${sy} A${radius},${radius} 0 ${largeArc} ${sweepFlag} ${ex},${ey}`;
   }
 
-  // Track (full 180° arc).
+  // Track (full 180° arc) — the filled arc is the SAME full path, always drawn;
+  // its visible length is controlled by stroke-dasharray so it can transition
+  // smoothly (dasharray/dashoffset are CSS-animatable, unlike the `d` attribute).
   const trackPath = arcPath(180, 360, r);
-
-  // Filled portion maps 0..1 → 180°..360°.
-  const filledEnd = 180 + fraction * 180;
-  const filledPath = fraction > 0 ? arcPath(180, filledEnd, r) : '';
+  const arcLength = Math.PI * r; // length of a 180° arc of radius r
 
   // Color band thresholds.
   const color =
@@ -75,20 +74,38 @@ export function Gauge({
     : fraction >= warnFraction ? 'var(--warn)'
     : 'var(--success)';
 
-  // Needle.
-  const needleRad = (filledEnd * Math.PI) / 180;
-  const nx = cx + (r - 4) * Math.cos(needleRad);
-  const ny = cy + (r - 4) * Math.sin(needleRad);
+  // Needle: fixed-length line pointing right from center, rotated via CSS
+  // transform (transitions smoothly) instead of recomputing x2/y2 each render.
+  const needleDeg = 180 + fraction * 180 - 360; // -180 (empty, left) .. 0 (full, right)
 
   return (
     <div className="gauge-card">
       <svg viewBox={`0 0 ${width} ${height}`} className="gauge-svg" role="img" aria-label={`${label} gauge`}>
         <path d={trackPath} stroke="var(--surf2)" strokeWidth={10} fill="none" strokeLinecap="round" />
-        {fraction > 0 && (
-          <path d={filledPath} stroke={color} strokeWidth={10} fill="none" strokeLinecap="round" />
-        )}
-        <line x1={cx} y1={cy} x2={nx} y2={ny} stroke={color} strokeWidth={2} strokeLinecap="round" />
-        <circle cx={cx} cy={cy} r={4} fill={color} />
+        <path
+          d={trackPath}
+          stroke={color}
+          strokeWidth={10}
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray={`${fraction * arcLength} ${arcLength}`}
+          style={{ transition: 'stroke-dasharray 500ms ease-out, stroke 400ms ease-out' }}
+        />
+        <line
+          x1={cx}
+          y1={cy}
+          x2={cx + (r - 4)}
+          y2={cy}
+          stroke={color}
+          strokeWidth={2}
+          strokeLinecap="round"
+          style={{
+            transformOrigin: `${cx}px ${cy}px`,
+            transform: `rotate(${needleDeg}deg)`,
+            transition: 'transform 500ms ease-out, stroke 400ms ease-out',
+          }}
+        />
+        <circle cx={cx} cy={cy} r={4} fill={color} style={{ transition: 'fill 400ms ease-out' }} />
       </svg>
       <div className="gauge-label">{label}</div>
       <div className="gauge-value">{fmt(value)}</div>
