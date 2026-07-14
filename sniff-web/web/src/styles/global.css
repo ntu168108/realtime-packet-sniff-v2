@@ -13,7 +13,17 @@
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }
 html, body, #root { height: 100%; overflow: hidden; margin: 0; padding: 0; }
-body { background: var(--bg); color: var(--text); font-family: var(--ui); font-size: 14px; line-height: 1.4; }
+body { background: var(--bg); color: var(--text); font-family: var(--ui); font-size: 14px; line-height: 1.4; position: relative; }
+/* Ambient vignette + faint scanlines — fixed, pointer-events-none, opacity-only
+   so it never triggers layout/paint cost on scroll (see perf guardrails). */
+body::after {
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 1000;
+  background:
+    repeating-linear-gradient(0deg, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px, transparent 1px, transparent 3px),
+    radial-gradient(ellipse at 50% 0%, rgba(74,123,166,0.05), transparent 60%);
+  animation: ambient-breathe 8s ease-in-out infinite;
+}
+@keyframes ambient-breathe { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
 .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 .app-layout { display: grid; grid-template-columns: 200px 1fr; grid-template-rows: 56px 1fr;
   grid-template-areas: "topbar topbar" "sidebar main"; height: 100vh; }
@@ -103,6 +113,20 @@ td.mono { font-family: var(--mono); }
 .spark-axis-labels { display: flex; flex-direction: column; justify-content: space-between;
   position: absolute; top: 0; right: 4px; height: 100%; pointer-events: none;
   font-family: var(--mono); font-size: 9px; color: var(--muted); opacity: 0.8; }
+.spark-draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: spark-draw-in 900ms ease-out forwards; }
+@keyframes spark-draw-in { to { stroke-dashoffset: 0; } }
+.spark-tip { animation: spark-tip-pulse 2s ease-in-out infinite; transform-origin: center; transform-box: fill-box; }
+@keyframes spark-tip-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.6); } }
+
+/* --- Page-load stagger reveal (Dashboard sections) ------------------------ */
+.dash-page > * { animation: fade-rise 420ms both cubic-bezier(0.16, 1, 0.3, 1); }
+.dash-page > *:nth-child(1) { animation-delay: 0ms; }
+.dash-page > *:nth-child(2) { animation-delay: 60ms; }
+.dash-page > *:nth-child(3) { animation-delay: 120ms; }
+.dash-page > *:nth-child(4) { animation-delay: 180ms; }
+.dash-page > *:nth-child(5) { animation-delay: 240ms; }
+.dash-page > *:nth-child(6) { animation-delay: 300ms; }
+@keyframes fade-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 
 .donut-chart { display: flex; align-items: center; gap: 16px; }
 .donut-legend { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; }

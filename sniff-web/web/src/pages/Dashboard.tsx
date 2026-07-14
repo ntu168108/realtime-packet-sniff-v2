@@ -105,7 +105,7 @@ export default function Dashboard() {
   const totalAttackFlows = attackSlices.reduce((s, x) => s + x.value, 0);
 
   return (
-    <div>
+    <div className="dash-page">
       <h1 style={{ marginTop: 0 }}>Dashboard</h1>
       {error && <div className="error">{error}</div>}
 

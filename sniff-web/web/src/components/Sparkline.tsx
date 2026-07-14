@@ -55,6 +55,7 @@ export function Sparkline({
   const linePath = points.map(([x, y], i) => (i === 0 ? `M${x},${y}` : `L${x},${y}`)).join(' ');
   const areaPath = `${linePath} L${width},${height} L0,${height} Z`;
   const midY = padY + usableH / 2;
+  const [lastX, lastY] = points[points.length - 1];
 
   return (
     <div className="spark-chart">
@@ -68,7 +69,15 @@ export function Sparkline({
         <line x1={0} y1={midY} x2={width} y2={midY} className="spark-axis" strokeDasharray="2,3" />
         <line x1={0} y1={height - 0.5} x2={width} y2={height - 0.5} className="spark-axis" />
         <path d={areaPath} style={{ fill, stroke: 'none', opacity: 0.18 }} />
-        <path d={linePath} style={{ fill: 'none', stroke, strokeWidth: 1.5, strokeLinejoin: 'round' }} />
+        {/* pathLength=1 normalizes the path so the draw-in animation below
+            doesn't need the actual geometric length. */}
+        <path
+          d={linePath}
+          pathLength={1}
+          className="spark-draw"
+          style={{ fill: 'none', stroke, strokeWidth: 1.5, strokeLinejoin: 'round' }}
+        />
+        <circle cx={lastX} cy={lastY} r={2.5} fill={stroke} className="spark-tip" />
       </svg>
       <div className="spark-axis-labels">
         <span>{formatValue(max)} {unit}</span>
