@@ -161,7 +161,48 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ---------- ZONE 2: services + Grafana ---------- */}
+      {/* ---------- ZONE 2 (was 3): ClickHouse counts + protocols — has charts, kept high ---------- */}
+      <div className="dash-zone-bot">
+        <div className="card">
+          <h2>ClickHouse flow counts</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8 }}>
+            <CountCard label="flows_all"          value={summary?.counts?.flows_all ?? null} to="/clickhouse?table=flows_all" size="lg" />
+            <CountCard label="dos"                value={summary?.counts?.flows_dos ?? null} to="/clickhouse?table=flows_dos" />
+            <CountCard label="exploits"           value={summary?.counts?.flows_exploits ?? null} to="/clickhouse?table=flows_exploits" />
+            <CountCard label="fuzzers"            value={summary?.counts?.flows_fuzzers ?? null} to="/clickhouse?table=flows_fuzzers" />
+            <CountCard label="generic"            value={summary?.counts?.flows_generic ?? null} to="/clickhouse?table=flows_generic" />
+            <CountCard label="analysis"           value={summary?.counts?.flows_analysis ?? null} to="/clickhouse?table=flows_analysis" />
+            <CountCard label="reconnaissance"     value={summary?.counts?.flows_reconnaissance ?? null} to="/clickhouse?table=flows_reconnaissance" />
+            <CountCard label="shellcode"          value={summary?.counts?.flows_shellcode ?? null} to="/clickhouse?table=flows_shellcode" />
+            <CountCard label="pipeline_runs"      value={summary?.counts?.pipeline_runs ?? null} to="/clickhouse?table=pipeline_runs" />
+          </div>
+          {attackSlices.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div className="gauge-label" style={{ marginBottom: 8 }}>Attack family share</div>
+              <DonutChart
+                slices={attackSlices}
+                centerValue={totalAttackFlows.toLocaleString()}
+                centerLabel="flows"
+                ariaLabel="attack family breakdown"
+              />
+            </div>
+          )}
+        </div>
+        <div className="card">
+          <h2>Protocol breakdown</h2>
+          <DonutChart
+            slices={protocolSlices}
+            centerValue={totalPackets.toLocaleString()}
+            centerLabel="packets"
+            ariaLabel="protocol breakdown"
+          />
+          <div style={{ marginTop: 16 }}>
+            <ProtocolBars counts={liveCapture?.protocols ?? summary?.protocols ?? {}} />
+          </div>
+        </div>
+      </div>
+
+      {/* ---------- ZONE 3 (was 2): services + Grafana — no chart, pushed below the chart zones ---------- */}
       <div className="dash-zone-mid">
         <div className="card">
           <h2>Services</h2>
@@ -210,48 +251,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ---------- ZONE 3: ClickHouse counts + protocols ---------- */}
-      <div className="dash-zone-bot">
-        <div className="card">
-          <h2>ClickHouse flow counts</h2>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8 }}>
-            <CountCard label="flows_all"          value={summary?.counts?.flows_all ?? null} to="/clickhouse?table=flows_all" size="lg" />
-            <CountCard label="dos"                value={summary?.counts?.flows_dos ?? null} to="/clickhouse?table=flows_dos" />
-            <CountCard label="exploits"           value={summary?.counts?.flows_exploits ?? null} to="/clickhouse?table=flows_exploits" />
-            <CountCard label="fuzzers"            value={summary?.counts?.flows_fuzzers ?? null} to="/clickhouse?table=flows_fuzzers" />
-            <CountCard label="generic"            value={summary?.counts?.flows_generic ?? null} to="/clickhouse?table=flows_generic" />
-            <CountCard label="analysis"           value={summary?.counts?.flows_analysis ?? null} to="/clickhouse?table=flows_analysis" />
-            <CountCard label="reconnaissance"     value={summary?.counts?.flows_reconnaissance ?? null} to="/clickhouse?table=flows_reconnaissance" />
-            <CountCard label="shellcode"          value={summary?.counts?.flows_shellcode ?? null} to="/clickhouse?table=flows_shellcode" />
-            <CountCard label="pipeline_runs"      value={summary?.counts?.pipeline_runs ?? null} to="/clickhouse?table=pipeline_runs" />
-          </div>
-          {attackSlices.length > 0 && (
-            <div style={{ marginTop: 16 }}>
-              <div className="gauge-label" style={{ marginBottom: 8 }}>Attack family share</div>
-              <DonutChart
-                slices={attackSlices}
-                centerValue={totalAttackFlows.toLocaleString()}
-                centerLabel="flows"
-                ariaLabel="attack family breakdown"
-              />
-            </div>
-          )}
-        </div>
-        <div className="card">
-          <h2>Protocol breakdown</h2>
-          <DonutChart
-            slices={protocolSlices}
-            centerValue={totalPackets.toLocaleString()}
-            centerLabel="packets"
-            ariaLabel="protocol breakdown"
-          />
-          <div style={{ marginTop: 16 }}>
-            <ProtocolBars counts={liveCapture?.protocols ?? summary?.protocols ?? {}} />
-          </div>
-        </div>
-      </div>
-
-      {/* ---------- ZONE 4: top talkers + alerts ---------- */}
+      {/* ---------- ZONE 4: top talkers + alerts — plain lists, no chart, stay last ---------- */}
       <div className="dash-zone-bot">
         <div className="card">
           <h2>Top talkers</h2>

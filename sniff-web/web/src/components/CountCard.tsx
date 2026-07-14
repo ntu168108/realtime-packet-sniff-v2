@@ -12,7 +12,7 @@ export function CountCard({ label, value, to, size = 'md' }: CountCardProps) {
   const body = (
     <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 0 }}>
       <div className="muted" style={{ fontSize: 11, textTransform: 'uppercase' }}>{label}</div>
-      <div className="mono" style={{ fontSize: valueSize, color: 'var(--accent)', fontWeight: size === 'lg' ? 700 : 400 }}>
+      <div className="mono" style={{ fontSize: valueSize, color: 'var(--text-bright)', fontWeight: size === 'lg' ? 700 : 400 }}>
         {value === null ? '—' : value.toLocaleString()}
       </div>
     </div>
