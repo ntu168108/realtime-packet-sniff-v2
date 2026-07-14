@@ -8,7 +8,7 @@ interface ProtocolBarsProps {
   palette?: Record<string, string>;
 }
 
-const DEFAULT_PALETTE: Record<string, string> = {
+export const DEFAULT_PALETTE: Record<string, string> = {
   TCP:    'var(--accent)',
   UDP:    'var(--success)',
   ICMP:   'var(--warn)',

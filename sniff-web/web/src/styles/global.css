@@ -1,9 +1,9 @@
 :root {
-  --bg: #0d1520; --surface: #14223a; --surf2: #1c3050;
-  --border: #2a4866; --accent: #28e4ff;
-  --accent-bg: rgba(40,228,255,.08); --text: #c8ddf2;
-  --muted: #6a90b8; --success: #3dd68c; --warn: #f5a623;
-  --danger: #e85370;
+  --bg: #0a0a0c; --surface: #131316; --surf2: #1c1c20;
+  --border: #2a2a30; --accent: #d97a3f;
+  --accent-bg: rgba(217,122,63,.10); --text: #d8d4cc;
+  --muted: #726e68; --success: #3aa66d; --warn: #d99a3f;
+  --danger: #c8506a;
   --mono: 'Consolas','SF Mono','Cascadia Code',monospace;
   --ui: 'Segoe UI','SF Pro Text',system-ui,sans-serif;
 }
@@ -82,11 +82,11 @@ td.mono { font-family: var(--mono); }
 
 /* --- Live signal + real-time card depth ---------------------------------- */
 .live-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%;
-  background: var(--success); margin-right: 6px; animation: live-pulse 2s ease-in-out infinite; }
+  background: var(--accent); margin-right: 6px; animation: live-pulse 2s ease-in-out infinite; }
 @keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 @media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } }
 
-.card-live { box-shadow: inset 0 0 0 1px rgba(40,228,255,.10), 0 2px 8px rgba(0,0,0,.25); border-color: transparent; }
+.card-live { box-shadow: inset 0 0 0 1px var(--accent-bg), 0 2px 8px rgba(0,0,0,.4); border-color: transparent; }
 
 .spark-card { padding: 12px; }
 .spark-svg { display: block; width: 100%; height: 36px; }
@@ -96,6 +96,13 @@ td.mono { font-family: var(--mono); }
 .spark-axis-labels { display: flex; flex-direction: column; justify-content: space-between;
   position: absolute; top: 0; right: 4px; height: 100%; pointer-events: none;
   font-family: var(--mono); font-size: 9px; color: var(--muted); opacity: 0.8; }
+
+.donut-chart { display: flex; align-items: center; gap: 16px; }
+.donut-legend { display: flex; flex-direction: column; gap: 6px; flex: 1; min-width: 0; }
+.donut-legend-row { display: flex; align-items: center; gap: 8px; font-size: 12px; cursor: default; }
+.donut-swatch { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+.donut-legend-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.donut-legend-pct { flex-shrink: 0; }
 
 .proto-bars { display: flex; flex-direction: column; gap: 6px; }
 .proto-row { display: grid; grid-template-columns: 60px 1fr 80px; align-items: center; gap: 8px; }

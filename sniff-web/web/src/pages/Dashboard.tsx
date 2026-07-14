@@ -5,8 +5,9 @@ import { useWebSocket } from '../hooks/useWebSocket';
 import { CountCard } from '../components/CountCard';
 import { Sparkline } from '../components/Sparkline';
 import { Gauge } from '../components/Gauge';
-import { ProtocolBars } from '../components/ProtocolBars';
+import { ProtocolBars, DEFAULT_PALETTE as PROTO_PALETTE } from '../components/ProtocolBars';
 import { AlertFeed } from '../components/AlertFeed';
+import { DonutChart, type DonutSlice } from '../components/DonutChart';
 import type { CaptureStatus, DashboardSummary, ServiceStatus } from '../types';
 
 /**
@@ -78,6 +79,30 @@ export default function Dashboard() {
     () => Math.max(1024, livePeak.bps * 2, ...bpsHistory.map((v) => v * 2)),
     [bpsHistory, livePeak.bps],
   );
+
+  const protocolCounts = liveCapture?.protocols ?? summary?.protocols ?? {};
+  const protocolSlices: DonutSlice[] = useMemo(
+    () => Object.entries(protocolCounts)
+      .filter(([, n]) => n > 0)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([name, value]) => ({ name, value, color: PROTO_PALETTE[name] ?? 'var(--accent)' })),
+    [protocolCounts],
+  );
+  const totalPackets = protocolSlices.reduce((s, x) => s + x.value, 0);
+
+  const ATTACK_FAMILY_COLORS: Record<string, string> = {
+    dos: '#c8506a', exploits: '#d97a3f', fuzzers: '#d99a3f',
+    generic: '#726e68', analysis: '#3aa66d', reconnaissance: '#8a6a4f', shellcode: '#a85a7a',
+  };
+  const attackSlices: DonutSlice[] = useMemo(() => {
+    const c = summary?.counts;
+    if (!c) return [];
+    return (['dos', 'exploits', 'fuzzers', 'generic', 'analysis', 'reconnaissance', 'shellcode'] as const)
+      .map((fam) => ({ name: fam, value: c[`flows_${fam}` as keyof typeof c] ?? 0, color: ATTACK_FAMILY_COLORS[fam] }))
+      .filter((s) => s.value > 0);
+  }, [summary?.counts]);
+  const totalAttackFlows = attackSlices.reduce((s, x) => s + x.value, 0);
 
   return (
     <div>
@@ -200,10 +225,29 @@ export default function Dashboard() {
             <CountCard label="shellcode"          value={summary?.counts?.flows_shellcode ?? null} to="/clickhouse?table=flows_shellcode" />
             <CountCard label="pipeline_runs"      value={summary?.counts?.pipeline_runs ?? null} to="/clickhouse?table=pipeline_runs" />
           </div>
+          {attackSlices.length > 0 && (
+            <div style={{ marginTop: 16 }}>
+              <div className="gauge-label" style={{ marginBottom: 8 }}>Attack family share</div>
+              <DonutChart
+                slices={attackSlices}
+                centerValue={totalAttackFlows.toLocaleString()}
+                centerLabel="flows"
+                ariaLabel="attack family breakdown"
+              />
+            </div>
+          )}
         </div>
         <div className="card">
           <h2>Protocol breakdown</h2>
-          <ProtocolBars counts={liveCapture?.protocols ?? summary?.protocols ?? {}} />
+          <DonutChart
+            slices={protocolSlices}
+            centerValue={totalPackets.toLocaleString()}
+            centerLabel="packets"
+            ariaLabel="protocol breakdown"
+          />
+          <div style={{ marginTop: 16 }}>
+            <ProtocolBars counts={liveCapture?.protocols ?? summary?.protocols ?? {}} />
+          </div>
         </div>
       </div>
 
