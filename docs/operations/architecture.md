@@ -348,13 +348,21 @@ Grafana URL, ClickHouse queries, log filtering) see
 
 The optional `sniff-web` service (FastAPI + React) is a single pane of glass:
 
-- **Capture control** — replaces the TUI for `start/stop/pause`, BPF filter, snaplen, promisc.
+- **Capture control** — replaces the TUI for `start/stop/pause`, BPF filter, snaplen, promisc;
+  live packet table with MAC addresses, ring-buffer fill/drop-cause breakdown, an opt-in
+  deep-decode (L7) toggle, live conversations, and a protocol donut.
+- **Dashboard** — traffic gauges/sparklines, ClickHouse per-family **attack** counts (not raw
+  row counts — see `sniff-web/docs/WEB_GUI.md`) with donut charts, click-through navigation
+  from summary cards to their detail pages.
 - **Service control** — `systemctl start/stop/restart` on the 5 IDS services + `sniff-web` itself.
 - **Kafka admin** — topic list with partitions/replication; consumer-group lag.
 - **ClickHouse** — read-only SQL console with prefix allowlist.
 - **PCAP manager** — list rotated files, download via HTTP.
 - **Config editor** — edit allowlisted keys (`display.*`, `live.*`, `modules.*`, `performance.*`).
 - **Auto-restore** — last capture config persisted to `/var/lib/sniff-web/last_capture.json`; restored on boot.
+
+The host-machine `/system` page (hostname/CPU/mem/disk/NIC) was removed
+2026-07-14 — out of scope for an IDS control panel.
 
 Runs as `User=tu` with `setcap cap_net_admin,cap_net_raw+ep` on `/usr/bin/python3.12`
 and a restricted sudoers rule that limits systemctl commands to 6 known services.

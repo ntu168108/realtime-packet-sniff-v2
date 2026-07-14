@@ -47,6 +47,16 @@ sudo systemctl restart sniff-producer
 
 See [Installation Step 3.4](../getting-started/installation.md#34-raise-the-topics-max-message-size).
 
+### ❌ Web GUI Dashboard shows the exact same number on every `flows_<family>` card
+
+Expected if you're on a checkout before 2026-07-14: all 7 per-family tables
+share the same underlying flow set (see
+[architecture.md § Per-family tables](architecture.md#per-family-tables)), so
+a plain `count()` per table is always identical and looks like fake/uniform
+data. Fixed by querying `WHERE is_attack = 1` per family instead — `git pull`
+(or check `sniff-web/web_server.py::_clickhouse_counts_safe`) if you still see
+identical numbers. Full explanation in `sniff-web/docs/WEB_GUI.md`.
+
 ### ❌ Segments reach `ec-consumer` but `pipeline_runs.status` is always `failed`
 
 Check `sudo journalctl -u ec-consumer -n 50` for the actual traceback — this

@@ -2,6 +2,55 @@
 
 All notable changes to `realtime-packet-sniff-v2` are documented in this file.
 
+## [Unreleased] - feat/web-ui-overhaul-2026-07-14
+
+Dashboard/Capture UI overhaul in one push. Full detail (rationale, gotchas,
+"don't re-add this" notes) lives in `sniff-web/docs/WEB_GUI.md`; this entry
+is the flat summary. All 0 new npm/pip dependencies throughout.
+
+### Added
+- **Dashboard**: donut charts (hand-rolled SVG, no chart library) for protocol
+  breakdown and attack-family share; click-through navigation from ClickHouse
+  count cards / service tiles to their detail pages (`/clickhouse?table=...`,
+  `/services`); page-load stagger reveal; count-up number tweening.
+- **Capture page**: MAC address (`src_mac`/`dst_mac`) shown under each
+  IP:port in the live packet table (free — already parsed in the fast decode
+  path); ring-buffer fill bar + drop-cause breakdown (`queue_dropped` vs
+  `write_dropped`); capture uptime + active interface in the status line;
+  live conversations panel (`GET /api/capture/conversations`, existed
+  server-side but was never wired to any page); protocol breakdown mini;
+  opt-in **deep decode (L7)** toggle (`GET/POST /api/capture/deep-decode`) for
+  DNS/HTTP/TLS-SNI/DHCP/NTP/QUIC info in the Info column, off by default.
+- **Theme**: "Obsidian" — off-black background, single slate-blue accent
+  (`#4a7ba6`), white headline text/numbers (was the accent color before).
+
+### Fixed
+- **ClickHouse per-family cards showed identical numbers on every family**
+  (`flows_dos`, `flows_exploits`, ... all read the same `count()` because all
+  7 tables share the same underlying flow set) — looked like fake/uniform
+  data. Now queries `WHERE is_attack = 1` per family, so cards and the
+  attack-family donut show real classification differences. `flows_all`
+  stays a true total. See `sniff-web/docs/WEB_GUI.md` for the full
+  explanation and the schema doc in `docs/operations/architecture.md`.
+- Traffic gauges (PPS/KB-s) pegging into the red-danger zone on minor
+  fluctuation — max was derived only from the 10s-cadence summary snapshot
+  while the displayed value came from a faster WS stream; now tracks a
+  rolling peak from live WS values too, with 2x headroom instead of 1.2x.
+- Capture page's packet-table card getting squeezed to near-zero height once
+  more panels were added below it (root container forced
+  `height: calc(100vh - 88px)` with `flex:1` fighting new siblings for space);
+  fixed height (480px) instead, page scrolls normally.
+- Gauge needle/arc, Sparkline draw-in: previously instant redraws, now
+  transition smoothly via CSS (`stroke-dasharray`/`transform`) — no JS
+  animation library involved.
+
+### Removed
+- **`/system` page** (hostname/uptime/CPU/mem/disk/NIC) end-to-end: route,
+  sidebar entry, `TopBar` uptime/load/CPU line, `SystemInfo` type, and the
+  `/api/system/info` backend endpoint — irrelevant to the IDS's actual job.
+- An ambient scanline/vignette full-page overlay, added then removed same
+  day after it read as visually cluttered.
+
 ## [Unreleased] - fix/capture-page-filter-autoscroll
 
 ### Fixed
