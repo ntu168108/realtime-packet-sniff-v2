@@ -176,7 +176,7 @@ export default function Capture() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 56px - 32px)' }}>
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
       <div className="card">
         <h2>Capture control</h2>
         {error && (
@@ -353,7 +353,7 @@ export default function Capture() {
         )}
       </div>
 
-      <div className="card" style={{ flex: 1, overflow: 'hidden', padding: 0 }}>
+      <div className="card" style={{ height: 480, overflow: 'hidden', padding: 0 }}>
         <PacketTableInner
           packets={packets}
           filter={tableFilter}
