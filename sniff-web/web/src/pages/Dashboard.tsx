@@ -25,10 +25,20 @@ export default function Dashboard() {
   const [services, setServices] = useState<ServiceStatus[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showEmbed, setShowEmbed] = useState(false);
+  // Rolling peak of the live (WS) values, not just the last 10s summary snapshot —
+  // otherwise a small live spike between summary polls could exceed a stale max
+  // and instantly peg the gauge into the red.
+  const [livePeak, setLivePeak] = useState({ pps: 0, bps: 0 });
 
   // Live capture stats — overrides the summary's stale capture object
   useWebSocket<{ type: string; data: CaptureStatus }>('/ws/stats', (msg) => {
-    if (msg.type === 'stats') setCapture(msg.data);
+    if (msg.type === 'stats') {
+      setCapture(msg.data);
+      setLivePeak((p) => ({
+        pps: Math.max(p.pps, msg.data.pps ?? 0),
+        bps: Math.max(p.bps, msg.data.bps ?? 0),
+      }));
+    }
   });
 
   // Live services status
@@ -55,11 +65,19 @@ export default function Dashboard() {
   // Pick whichever capture status is fresher (WS > summary)
   const liveCapture = capture ?? summary?.capture ?? null;
 
-  // Compute the max for gauges from the sparkline history (so the dial scales sensibly)
+  // Compute the max for gauges from sparkline history AND the live WS peak, with
+  // generous headroom (2x) so normal fluctuation doesn't peg the needle into red —
+  // the danger zone should mean "near capacity", not "traffic moved a bit".
   const ppsHistory = summary?.rate_history?.pps ?? [];
   const bpsHistory = summary?.rate_history?.bps ?? [];
-  const ppsMax = useMemo(() => Math.max(100, ...ppsHistory.map((v) => v * 1.2)), [ppsHistory]);
-  const bpsMax = useMemo(() => Math.max(1024, ...bpsHistory.map((v) => v * 1.2)), [bpsHistory]);
+  const ppsMax = useMemo(
+    () => Math.max(100, livePeak.pps * 2, ...ppsHistory.map((v) => v * 2)),
+    [ppsHistory, livePeak.pps],
+  );
+  const bpsMax = useMemo(
+    () => Math.max(1024, livePeak.bps * 2, ...bpsHistory.map((v) => v * 2)),
+    [bpsHistory, livePeak.bps],
+  );
 
   return (
     <div>
