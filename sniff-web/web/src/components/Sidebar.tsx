@@ -9,7 +9,6 @@ const ITEMS = [
   { path: '/kafka', label: 'Kafka' },
   { path: '/clickhouse', label: 'ClickHouse' },
   { path: '/config', label: 'Config' },
-  { path: '/system', label: 'System' },
 ];
 
 export function Sidebar() {

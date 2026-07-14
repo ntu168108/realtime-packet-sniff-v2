@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
 
 const PRESETS = [
@@ -8,8 +9,15 @@ const PRESETS = [
   'SHOW TABLES FROM network_ids',
 ];
 
+// Known table names a Dashboard card can deep-link to via ?table=<name>
+const KNOWN_TABLES = new Set([
+  'flows_all', 'flows_dos', 'flows_exploits', 'flows_fuzzers', 'flows_generic',
+  'flows_analysis', 'flows_reconnaissance', 'flows_shellcode', 'pipeline_runs',
+]);
+
 export default function ClickHousePage() {
   const api = useApi();
+  const [searchParams] = useSearchParams();
   const [sql, setSql] = useState(PRESETS[0]);
   const [columns, setColumns] = useState<string[]>([]);
   const [rows, setRows] = useState<any[][]>([]);
@@ -32,6 +40,17 @@ export default function ClickHousePage() {
       setColumns([]); setRows([]); setElapsed(null);
     }
   }
+
+  // Deep link from Dashboard cards: /clickhouse?table=flows_dos runs a count query immediately.
+  useEffect(() => {
+    const table = searchParams.get('table');
+    if (table && KNOWN_TABLES.has(table)) {
+      const q = `SELECT * FROM network_ids.${table} ORDER BY ${table === 'pipeline_runs' ? 'run_id' : 'ts'} DESC LIMIT 100`;
+      setSql(q);
+      run(q);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div>

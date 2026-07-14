@@ -40,7 +40,6 @@ def test_login_endpoint_returns_200_with_correct_creds(client):
     ("GET", "/api/pcap/download/foo.pcap"),
     ("GET", "/api/config"),
     ("PUT", "/api/config"),
-    ("GET", "/api/system/info"),
 ])
 def test_endpoint_requires_auth(client, method, path):
     if method == "POST":

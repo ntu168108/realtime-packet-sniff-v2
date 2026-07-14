@@ -72,20 +72,9 @@ def test_config_put_rejects_disallowed_keys(setup_env):
     assert r.status_code == 400
 
 
-def test_system_info_returns_required_keys(setup_env):
-    client = setup_env
-    tok = _login(client)
-    r = client.get("/api/system/info", headers={"Authorization": f"Bearer {tok}"})
-    assert r.status_code == 200
-    body = r.json()
-    for k in ("hostname", "uptime_seconds", "loadavg", "cpu_count",
-             "mem_total_mb", "mem_available_mb", "disk_total_gb", "disk_used_gb", "nic_count"):
-        assert k in body
-
-
 def test_all_misc_endpoints_require_auth(setup_env):
     client = setup_env
-    for path in ["/api/pcap/files", "/api/config", "/api/system/info"]:
+    for path in ["/api/pcap/files", "/api/config"]:
         assert client.get(path).status_code == 401
 
 

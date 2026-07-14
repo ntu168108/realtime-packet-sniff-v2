@@ -29,6 +29,9 @@ body { background: var(--bg); color: var(--text); font-family: var(--ui); font-s
 .main { grid-area: main; overflow-y: auto; padding: 16px; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
   padding: 16px; margin-bottom: 12px; }
+.card-link { display: block; text-decoration: none; color: inherit; transition: transform 120ms ease-out, border-color 120ms ease-out;
+  cursor: pointer; }
+.card-link:hover { border-color: var(--accent); transform: translateY(-1px); }
 .card h2 { margin: 0 0 12px 0; font-size: 14px; font-weight: 600; color: var(--accent);
   text-transform: uppercase; letter-spacing: 0.05em; }
 .btn { background: var(--accent); color: var(--bg); border: none; padding: 8px 16px;
@@ -77,10 +80,22 @@ td.mono { font-family: var(--mono); }
 .gauge-value { font-family: var(--mono); font-size: 20px; color: var(--accent); font-weight: 700; }
 .gauge-sub { font-family: var(--mono); font-size: 11px; color: var(--muted); }
 
+/* --- Live signal + real-time card depth ---------------------------------- */
+.live-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--success); margin-right: 6px; animation: live-pulse 2s ease-in-out infinite; }
+@keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .live-dot { animation: none; } }
+
+.card-live { box-shadow: inset 0 0 0 1px rgba(40,228,255,.10), 0 2px 8px rgba(0,0,0,.25); border-color: transparent; }
+
 .spark-card { padding: 12px; }
 .spark-svg { display: block; width: 100%; height: 36px; }
 .spark-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
 .spark-value { font-family: var(--mono); font-size: 18px; color: var(--text); }
+.spark-chart { position: relative; }
+.spark-axis-labels { display: flex; flex-direction: column; justify-content: space-between;
+  position: absolute; top: 0; right: 4px; height: 100%; pointer-events: none;
+  font-family: var(--mono); font-size: 9px; color: var(--muted); opacity: 0.8; }
 
 .proto-bars { display: flex; flex-direction: column; gap: 6px; }
 .proto-row { display: grid; grid-template-columns: 60px 1fr 80px; align-items: center; gap: 8px; }
@@ -107,6 +122,9 @@ td.mono { font-family: var(--mono); }
 .alert-row .flow { color: var(--muted); font-family: var(--mono); font-size: 11px; }
 .alert-row .copy { font-size: 11px; padding: 2px 8px; }
 .pill.critical { background: var(--danger); color: white; }
+.alert-row.flash { animation: alert-flash 900ms ease-out 1; }
+@keyframes alert-flash { 0% { box-shadow: inset 0 0 0 1px var(--danger); } 100% { box-shadow: inset 0 0 0 1px transparent; } }
+@media (prefers-reduced-motion: reduce) { .alert-row.flash { animation: none; } }
 .pill.high { background: var(--warn); color: var(--bg); }
 .pill.medium, .pill.low { background: var(--surf2); color: var(--text); }
 

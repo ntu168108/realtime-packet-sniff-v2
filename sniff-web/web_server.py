@@ -1223,26 +1223,6 @@ def api_config_put(body: dict, user=Depends(require_user)):
     return {"ok": True}
 
 
-@app.get("/api/system/info")
-def api_system_info(user=Depends(require_user)):
-    import psutil, socket as _s
-    mem = psutil.virtual_memory()
-    disk = psutil.disk_usage("/")
-    try:
-        nics = len(psutil.net_if_addrs())
-        hostname = _s.gethostname()
-    except Exception:
-        nics = 0; hostname = "unknown"
-    uptime_s = int(time.time() - psutil.boot_time())
-    return {
-        "hostname": hostname, "uptime_seconds": uptime_s,
-        "loadavg": list(psutil.getloadavg()), "cpu_count": psutil.cpu_count(logical=True) or 1,
-        "mem_total_mb": mem.total // (1024 * 1024), "mem_available_mb": mem.available // (1024 * 1024),
-        "disk_total_gb": disk.total // (1024 ** 3), "disk_used_gb": disk.used // (1024 ** 3),
-        "nic_count": nics,
-    }
-
-
 # ---------------------------------------------------------------------------
 # WebSocket endpoints (Task 9): packets, stats, services
 # ---------------------------------------------------------------------------

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import type { AlertItem } from '../types';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 
@@ -10,9 +10,12 @@ interface AlertFeedProps {
  * Compact alert list with copy-to-clipboard.
  * - Sorted newest-first (assumes server appends in order).
  * - Renders a one-shot "copied" pill on each row for 1s.
+ * - Flashes the newest row once when it first appears (new alert arrived).
  */
 export function AlertFeed({ alerts }: AlertFeedProps) {
   const { copy, copied: copiedId } = useCopyToClipboard();
+  const lastSeenId = useRef<string | undefined>(undefined);
+  const [freshId, setFreshId] = useState<string | undefined>(undefined);
 
   if (!alerts || alerts.length === 0) {
     return <div className="muted" style={{ padding: 8 }}>No alerts yet.</div>;
@@ -20,6 +23,14 @@ export function AlertFeed({ alerts }: AlertFeedProps) {
 
   // newest first
   const items = [...alerts].reverse();
+  const newestId = items[0]?.alert_id;
+
+  useEffect(() => {
+    if (newestId && newestId !== lastSeenId.current) {
+      if (lastSeenId.current !== undefined) setFreshId(newestId);
+      lastSeenId.current = newestId;
+    }
+  }, [newestId]);
 
   return (
     <div className="alert-feed">
@@ -29,7 +40,11 @@ export function AlertFeed({ alerts }: AlertFeedProps) {
         const flow = [a.src, a.dst].filter(Boolean).join(' → ') || a.proto || '';
         const prio = (a.priority || 'medium').toLowerCase();
         return (
-          <div className="alert-row" key={a.alert_id || `${a.label}-${ts}`}>
+          <div
+            className={`alert-row ${a.alert_id === freshId ? 'flash' : ''}`}
+            key={a.alert_id || `${a.label}-${ts}`}
+            onAnimationEnd={() => { if (a.alert_id === freshId) setFreshId(undefined); }}
+          >
             <div className="ts">{when}</div>
             <div>
               <span className={`pill ${prio}`}>{prio}</span>

@@ -23,11 +23,6 @@ export interface Counts {
   flows_reconnaissance?: number; flows_shellcode?: number; pipeline_runs?: number;
 }
 export interface PcapFile { name: string; size: number; mtime: number; }
-export interface SystemInfo {
-  hostname: string; uptime_seconds: number; loadavg: number[];
-  cpu_count: number; mem_total_mb: number; mem_available_mb: number;
-  disk_total_gb: number; disk_used_gb: number; nic_count: number;
-}
 export interface LastConfig {
   interface: string; bpf_filter: string; snaplen: number;
   promisc: boolean; auto_restore: boolean; saved_at: string;

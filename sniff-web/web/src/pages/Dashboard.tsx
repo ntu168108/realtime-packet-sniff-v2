@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { CountCard } from '../components/CountCard';
@@ -66,8 +67,11 @@ export default function Dashboard() {
       {error && <div className="error">{error}</div>}
 
       {/* ---------- ZONE 1: sticky traffic header ---------- */}
-      <div className="card">
-        <h2>Live traffic</h2>
+      <div className={`card ${liveCapture?.running ? 'card-live' : ''}`}>
+        <h2>
+          {liveCapture?.running && <span className="live-dot" aria-hidden="true" />}
+          Live traffic
+        </h2>
         <div className="dash-zone-traffic">
           <div className="card gauge-card" style={{ marginBottom: 0 }}>
             <Gauge
@@ -107,9 +111,9 @@ export default function Dashboard() {
           </div>
           <div className="card" style={{ marginBottom: 0 }}>
             <div className="gauge-label">PPS — last 5 min</div>
-            <Sparkline values={ppsHistory} ariaLabel="packets per second history" />
+            <Sparkline values={ppsHistory} unit="pps" ariaLabel="packets per second history" />
             <div className="gauge-label" style={{ marginTop: 8 }}>KB/s — last 5 min</div>
-            <Sparkline values={bpsHistory.map((b) => b / 1024)} stroke="var(--success)" fill="var(--success)" ariaLabel="kilobytes per second history" />
+            <Sparkline values={bpsHistory.map((b) => b / 1024)} unit="KB/s" stroke="var(--success)" fill="var(--success)" ariaLabel="kilobytes per second history" />
           </div>
         </div>
       </div>
@@ -120,14 +124,16 @@ export default function Dashboard() {
           <h2>Services</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 8 }}>
             {(services.length ? services : summary?.services ?? []).map((s) => (
-              <div key={s.name} className="card" style={{ padding: 8, marginBottom: 0 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span className="mono">{s.name}</span>
-                  <span className={`pill ${s.active ? 'active' : 'inactive'}`}>
-                    {s.active ? 'active' : 'inactive'}
-                  </span>
+              <Link key={s.name} to="/services" className="card-link">
+                <div className="card" style={{ padding: 8, marginBottom: 0 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span className="mono">{s.name}</span>
+                    <span className={`pill ${s.active ? 'active' : 'inactive'}`}>
+                      {s.active ? 'active' : 'inactive'}
+                    </span>
+                  </div>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         </div>
@@ -166,15 +172,15 @@ export default function Dashboard() {
         <div className="card">
           <h2>ClickHouse flow counts</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 8 }}>
-            <CountCard label="flows_all"          value={summary?.counts?.flows_all ?? null} />
-            <CountCard label="dos"                value={summary?.counts?.flows_dos ?? null} />
-            <CountCard label="exploits"           value={summary?.counts?.flows_exploits ?? null} />
-            <CountCard label="fuzzers"            value={summary?.counts?.flows_fuzzers ?? null} />
-            <CountCard label="generic"            value={summary?.counts?.flows_generic ?? null} />
-            <CountCard label="analysis"           value={summary?.counts?.flows_analysis ?? null} />
-            <CountCard label="reconnaissance"     value={summary?.counts?.flows_reconnaissance ?? null} />
-            <CountCard label="shellcode"          value={summary?.counts?.flows_shellcode ?? null} />
-            <CountCard label="pipeline_runs"      value={summary?.counts?.pipeline_runs ?? null} />
+            <CountCard label="flows_all"          value={summary?.counts?.flows_all ?? null} to="/clickhouse?table=flows_all" size="lg" />
+            <CountCard label="dos"                value={summary?.counts?.flows_dos ?? null} to="/clickhouse?table=flows_dos" />
+            <CountCard label="exploits"           value={summary?.counts?.flows_exploits ?? null} to="/clickhouse?table=flows_exploits" />
+            <CountCard label="fuzzers"            value={summary?.counts?.flows_fuzzers ?? null} to="/clickhouse?table=flows_fuzzers" />
+            <CountCard label="generic"            value={summary?.counts?.flows_generic ?? null} to="/clickhouse?table=flows_generic" />
+            <CountCard label="analysis"           value={summary?.counts?.flows_analysis ?? null} to="/clickhouse?table=flows_analysis" />
+            <CountCard label="reconnaissance"     value={summary?.counts?.flows_reconnaissance ?? null} to="/clickhouse?table=flows_reconnaissance" />
+            <CountCard label="shellcode"          value={summary?.counts?.flows_shellcode ?? null} to="/clickhouse?table=flows_shellcode" />
+            <CountCard label="pipeline_runs"      value={summary?.counts?.pipeline_runs ?? null} to="/clickhouse?table=pipeline_runs" />
           </div>
         </div>
         <div className="card">
