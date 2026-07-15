@@ -1,5 +1,6 @@
 #!/bin/bash
-DIR="/mnt/c/Users/USER/Downloads/Source_For_Matching/4-6-DoS/filepcap"
+# Usage: ./debug_merge.sh <work_dir>  (thu muc chua argus_temp.csv/zeek_temp.csv)
+DIR="${1:?Usage: $0 <work_dir>}"
 
 echo "=== ARGUS TEMP (5 dong dau) ==="
 head -6 "$DIR/argus_temp.csv" 2>/dev/null || echo "File khong ton tai"

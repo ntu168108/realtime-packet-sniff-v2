@@ -34,52 +34,53 @@ MODULE_AUTO  (điều phối + theo dõi thư mục)
 ## 📁 Cấu trúc thư mục
 
 > [!IMPORTANT]
-> **Code** nằm trong `EaF/` (workspace), còn **dữ liệu** (`CSV/`, `Filepcap/`) nằm
-> ở thư mục cha `Python/`. Các script tự suy ra đường dẫn này, không cần chỉnh tay.
+> **Code** và **dữ liệu** (`CSV/`, `Filepcap/`) đều nằm trong
+> `Extraction-and-classification/`. Các script tự suy ra đường dẫn này từ
+> `Path(__file__)` (xem `config.py`), có thể override thư mục output qua
+> biến môi trường `NB15_OUTPUT_DIR`.
 
 ```
-Python\
-├── EaF\                         ← THƯ MỤC CODE (workspace)
-│   ├── README.md                ← file này
-│   ├── MODULE_TRICHXUAT\        ← trích xuất đặc trưng từ PCAP
-│   │   ├── extractor.py
-│   │   ├── add_features.py
-│   │   ├── config.py            ← cấu hình đường dẫn + tool WSL
-│   │   └── ...
-│   ├── MODULE_PHANLOAI\         ← filter phân loại (tham số hoá) và engine phân loại
-│   │   ├── family_filter.py     ← 1 script dùng chung cho cả 7 họ (--class <Name>)
-│   │   ├── dos_classifier.py    ← Engine phân loại tập dữ liệu DoS
-│   │   └── ...
-│   └── MODULE_AUTO\             ← tự động hóa
-│       ├── auto_pipeline.py
-│       ├── pcap_watcher.py
-│       └── README_AUTO.md
+Extraction-and-classification/
+├── README.md                    ← file này
+├── MODULE_TRICHXUAT/            ← trích xuất đặc trưng từ PCAP
+│   ├── extractor.py
+│   ├── add_features.py
+│   ├── config.py                ← cấu hình đường dẫn + tool
+│   └── ...
+├── MODULE_PHANLOAI/             ← filter phân loại (tham số hoá) và engine phân loại
+│   ├── family_filter.py         ← 1 script dùng chung cho cả 7 họ (--class <Name>)
+│   ├── dos_classifier.py        ← Engine phân loại tập dữ liệu DoS
+│   └── ...
+├── MODULE_AUTO/                 ← tự động hóa
+│   ├── auto_pipeline.py
+│   ├── pcap_watcher.py
+│   └── README_AUTO.md
 │
-├── CSV\                         ← THƯ MỤC OUTPUT
-│   ├── CSV_Full_feature\        ← CSV đầy đủ đặc trưng (trung gian)
-│   ├── Filter_Generic_feature\
-│   ├── Filter_DoS_feature\
-│   ├── Filter_Exploits_feature\
-│   ├── Filter_Fuzzers_feature\
-│   ├── Filter_Analysis_feature\
-│   ├── Filter_Reconnaissance_feature\
-│   └── Filter_Shellcode_feature\
+├── CSV/                         ← THƯ MỤC OUTPUT
+│   ├── CSV_Full_feature/        ← CSV đầy đủ đặc trưng (trung gian)
+│   ├── Filter_Generic_feature/
+│   ├── Filter_DoS_feature/
+│   ├── Filter_Exploits_feature/
+│   ├── Filter_Fuzzers_feature/
+│   ├── Filter_Analysis_feature/
+│   ├── Filter_Reconnaissance_feature/
+│   └── Filter_Shellcode_feature/
 │
-└── Filepcap\                    ← THƯ MỤC INPUT (thả .pcap vào đây)
-    └── processed\               ← pcap đã xử lý tự move vào đây
+└── Filepcap/                    ← THƯ MỤC INPUT (thả .pcap vào đây)
+    └── processed/               ← pcap đã xử lý tự move vào đây
 ```
 
 ## 🛠️ Yêu cầu hệ thống
 
 - **Python 3.8+** có `pandas` và `numpy`.
-  Trên máy này: `py -3` trỏ tới `Python314` (đã có pandas 3.0.3). `auto_pipeline.py`
-  tự dò interpreter có pandas, nên không cần lo chọn nhầm bản Python.
-- **WSL** (Windows) với **Argus** (`argus`, `ra`) và **Zeek 8.0+** — chỉ cần cho
-  bước trích xuất (`extractor.py`). Đường dẫn tool cấu hình trong
-  [config.py](MODULE_TRICHXUAT/config.py).
+  `auto_pipeline.py` tự dò interpreter có pandas (ưu tiên biến môi trường
+  `AUTO_PIPELINE_PYTHON`), nên không cần lo chọn nhầm bản Python.
+- **Argus** (`argus`, `ra`) và **Zeek 8.0+** trên PATH — chỉ cần cho bước trích
+  xuất (`extractor.py`). Cài bằng [install_tools.sh](MODULE_TRICHXUAT/install_tools.sh).
+  Đường dẫn tool cấu hình trong [config.py](MODULE_TRICHXUAT/config.py).
 - (Tùy chọn) `watchdog` để watcher phản ứng tức thì:
-  ```powershell
-  py -3 -m pip install watchdog
+  ```bash
+  python3 -m pip install watchdog
   ```
   Không cài vẫn chạy được — watcher tự fallback sang chế độ polling.
 
@@ -89,12 +90,12 @@ Python\
 
 Mở 1 terminal, chạy watcher rồi để yên:
 
-```powershell
-py -3 D:\1LearnandStudy\Program_Language\Python\EaF\MODULE_AUTO\pcap_watcher.py
+```bash
+python3 MODULE_AUTO/pcap_watcher.py
 ```
 
-Sau đó **thả file `.pcap` vào `Python\Filepcap\`** → pipeline tự kích hoạt, sinh CSV
-ở các thư mục `CSV\Filter_*`, rồi move pcap sang `Filepcap\processed\`.
+Sau đó **thả file `.pcap` vào `Filepcap/`** → pipeline tự kích hoạt, sinh CSV
+ở các thư mục `CSV/Filter_*`, rồi move pcap sang `Filepcap/processed/`.
 
 Tùy chọn watcher:
 - `--process-existing` : xử lý luôn các pcap đã có sẵn trong thư mục khi khởi động.
@@ -104,25 +105,25 @@ Tùy chọn watcher:
 
 ### Cách 2 — Chạy thủ công 1 file pcap
 
-```powershell
-py -3 D:\1LearnandStudy\Program_Language\Python\EaF\MODULE_AUTO\auto_pipeline.py <đường_dẫn.pcap>
+```bash
+python3 MODULE_AUTO/auto_pipeline.py <đường_dẫn.pcap>
 ```
 
 ### Cách 3 — Chạy lẻ từng bước
 
-```powershell
+```bash
 # Bước 1: trích xuất thô
-py -3 EaF\MODULE_TRICHXUAT\extractor.py Filepcap\synf5k.pcap
+python3 MODULE_TRICHXUAT/extractor.py Filepcap/synf5k.pcap
 
 # Bước 2: bổ sung đặc trưng
-py -3 EaF\MODULE_TRICHXUAT\add_features.py CSV\CSV_Full_feature\synf5k_raw.csv
+python3 MODULE_TRICHXUAT/add_features.py CSV/CSV_Full_feature/synf5k_raw.csv
 
 # Bước 3: chạy 1 filter (hoặc cả thư mục) — tham số --class chọn họ tấn công
-py -3 EaF\MODULE_PHANLOAI\family_filter.py --class DoS CSV\CSV_Full_feature\synf5k_dos_features.csv
+python3 MODULE_PHANLOAI/family_filter.py --class DoS CSV/CSV_Full_feature/synf5k_dos_features.csv
 
 # Bước 4: chấm điểm rủi ro & phân loại DoS chuyên sâu (chỉ dành cho luồng DoS)
 # Lưu ý: Nếu truyền file CSV thô, dos_classifier.py sẽ tự động chạy family_filter.py --class DoS trước.
-py -3 EaF\MODULE_PHANLOAI\dos_classifier.py --csv CSV\CSV_Full_feature\synf5k_dos_features.csv
+python3 MODULE_PHANLOAI/dos_classifier.py --csv CSV/CSV_Full_feature/synf5k_dos_features.csv
 ```
 
 ## 📝 Ghi chú
@@ -132,7 +133,7 @@ py -3 EaF\MODULE_PHANLOAI\dos_classifier.py --csv CSV\CSV_Full_feature\synf5k_do
 > File trung gian `<base>_dos_features.csv` (50 cột) là đầu vào chung cho cả 7 filter.
 
 > [!WARNING]
-> Bước trích xuất phụ thuộc WSL + Argus + Zeek. Nếu môi trường chưa sẵn sàng,
+> Bước trích xuất phụ thuộc Argus + Zeek. Nếu môi trường chưa sẵn sàng,
 > `extractor.py` sẽ lỗi và pipeline dừng ở bước 1 (các pcap khác vẫn xử lý tiếp).
 
 ## 📌 Tài liệu tham khảo

@@ -35,7 +35,7 @@ python3 extractor.py <đường_dẫn_file_pcap>
 ```
 * **Ví dụ**: `python3 extractor.py synf5k.pcap`
 * **Kết quả**:
-  * **Tệp CSV thô mặc định**: `<base_name>_raw.csv` (ví dụ: `synf5k_raw.csv`) được sinh ra trong thư mục kết quả mặc định (`D:\1LearnandStudy\Program_Language\Python\CSV\CSV_Full_feature`).
+  * **Tệp CSV thô mặc định**: `<base_name>_raw.csv` (ví dụ: `synf5k_raw.csv`) được sinh ra trong thư mục kết quả mặc định (`Extraction-and-classification/CSV/CSV_Full_feature`, hoặc override qua biến môi trường `NB15_OUTPUT_DIR`).
   * **Cơ chế Smart Cleanup (Bảo tồn http.log)**: Khi chạy dọn dẹp mặc định, tệp `http.log` của Zeek nếu tồn tại sẽ tự động được sao chép ra thư mục đích dưới dạng `<base_name>_http.log` (ví dụ: `synf5k_http.log`) để phục vụ truy ngược User-Agent cho module Classifier sau này.
 * **Các tham số tùy chọn khác**:
   * `-o <tên_file>`: Chỉ định tên tệp CSV đầu ra cụ thể.

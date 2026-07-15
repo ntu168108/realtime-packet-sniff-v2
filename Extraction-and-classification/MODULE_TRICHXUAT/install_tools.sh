@@ -1,7 +1,7 @@
 #!/bin/bash
 # ============================================================
-# install_tools.sh - Cài đặt Argus + Zeek trên Ubuntu 24.04 (WSL)
-# Chạy trong WSL terminal: bash install_tools.sh
+# install_tools.sh - Cài đặt Argus + Zeek trên Ubuntu 24.04
+# Chạy: bash install_tools.sh
 # ============================================================
 
 set -e  # Dừng nếu có lỗi

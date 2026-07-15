@@ -33,8 +33,8 @@ pcap được move sang  Filepcap/processed/
 
 ## Yêu cầu
 
-- **WSL + argus + zeek** (cho `extractor.py`) — đã bật.
-- **Python có pandas/numpy**. Orchestrator tự dò interpreter có pandas (ưu tiên biến môi trường `AUTO_PIPELINE_PYTHON`, rồi `py -3`, rồi `python`). Trên máy này: `Python314` (pandas 3.0.3).
+- **argus + zeek** (cho `extractor.py`) đã cài trên PATH — xem `install_tools.sh`.
+- **Python 3 có pandas/numpy**. Orchestrator tự dò interpreter có pandas (ưu tiên biến môi trường `AUTO_PIPELINE_PYTHON`, rồi `python3`, rồi `python`).
 - **watchdog** (tùy chọn): `pip install watchdog` để watcher phản ứng tức thì. Không cài thì tự fallback sang polling.
 
 ## Cách dùng
@@ -43,8 +43,8 @@ pcap được move sang  Filepcap/processed/
 
 Khởi động watcher rồi để chạy nền:
 
-```powershell
-py -3 pcap_watcher.py
+```bash
+python3 pcap_watcher.py
 ```
 
 Sau đó chỉ cần copy/move file `.pcap` vào `Filepcap/`. Watcher sẽ:
@@ -60,12 +60,12 @@ Tham số:
 
 ### 2. Chạy thủ công 1 file
 
-```powershell
-py -3 auto_pipeline.py D:\...\Filepcap\synf5k.pcap
+```bash
+python3 auto_pipeline.py Filepcap/synf5k.pcap
 ```
 
 ## Ghi chú
 
 - Watcher mặc định **bỏ qua** các pcap có sẵn lúc khởi động, chỉ xử lý file MỚI đi vào. Dùng `--process-existing` nếu muốn xử lý cả file cũ.
 - Nếu một filter lỗi, các filter khác vẫn chạy; pcap sẽ **không** bị move sang `processed/` để bạn biết cần xử lý lại.
-- Đặt interpreter cụ thể: `set AUTO_PIPELINE_PYTHON=C:\...\python.exe` trước khi chạy.
+- Đặt interpreter cụ thể: `export AUTO_PIPELINE_PYTHON=/usr/bin/python3` trước khi chạy.

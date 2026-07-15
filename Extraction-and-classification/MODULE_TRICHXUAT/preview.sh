@@ -1,5 +1,6 @@
 #!/bin/bash
-FILE="/mnt/c/Users/USER/Downloads/Source_For_Matching/4-6-DoS/filepcap/final_features_nb15_with_mac.csv"
+# Usage: ./preview.sh <path/to/final_features_nb15_with_mac.csv>
+FILE="${1:?Usage: $0 <path/to/final_features_nb15_with_mac.csv>}"
 
 echo "=== FILE INFO ==="
 ls -lh "$FILE"

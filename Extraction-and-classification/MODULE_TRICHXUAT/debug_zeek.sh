@@ -1,5 +1,6 @@
 #!/bin/bash
-DIR="/mnt/c/Users/USER/Downloads/Source_For_Matching/4-6-DoS/filepcap"
+# Usage: ./debug_zeek.sh <work_dir>  (thu muc chua zeek_logs/conn.log)
+DIR="${1:?Usage: $0 <work_dir>}"
 export PATH=$PATH:/opt/zeek/bin
 
 echo "=== CONN.LOG RAW (3 dong dau, bo comment) ==="

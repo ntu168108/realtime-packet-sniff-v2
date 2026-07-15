@@ -15,8 +15,8 @@ Ho tro 2 che do:
     - polling thuan (fallback): quet thu muc moi POLL_INTERVAL giay.
 
 Cach dung:
-    python pcap_watcher.py
-    python pcap_watcher.py --watch-dir D:\\...\\Filepcap --poll 5 --process-existing
+    python3 pcap_watcher.py
+    python3 pcap_watcher.py --watch-dir Filepcap --poll 5 --process-existing
 """
 
 import argparse
