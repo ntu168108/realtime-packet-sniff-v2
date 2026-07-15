@@ -107,52 +107,10 @@ MERGE_KEYS = ["srcip", "dstip", "sport", "dport", "proto"]
 MAC_FILL_VALUE = "00:00:00:00:00:00"
 
 # ============================================================
-# Phát hiện hệ điều hành & hỗ trợ WSL
+# Đường dẫn tới các công cụ CLI (Argus, ra, Zeek)
 # ============================================================
 import shutil
 import os
-import sys
-import subprocess as _subprocess
-
-IS_WINDOWS = sys.platform.startswith("win")
-
-def win_to_wsl_path(win_path: str) -> str:
-    """Chuyển đổi đường dẫn Windows sang đường dẫn WSL.
-
-    Ví dụ: D:\\folder\\file.pcap → /mnt/d/folder/file.pcap
-    """
-    path = os.path.abspath(win_path)
-    # Lấy ký tự ổ đĩa (D:) → /mnt/d
-    drive, rest = os.path.splitdrive(path)
-    drive_letter = drive[0].lower()
-    # Thay \\ → /
-    rest = rest.replace("\\", "/")
-    return f"/mnt/{drive_letter}{rest}"
-
-
-def wsl_run(cmd: list, **kwargs) -> _subprocess.CompletedProcess:
-    """Chạy lệnh qua WSL nếu đang trên Windows, nếu không thì chạy trực tiếp.
-
-    Args:
-        cmd:    List lệnh và tham số (đường dẫn đã chuyển sang WSL format).
-        **kwargs: Các tham số bổ sung cho subprocess.run().
-
-    Returns:
-        subprocess.CompletedProcess
-    """
-    if IS_WINDOWS:
-        # Gọi qua wsl.exe
-        full_cmd = ["wsl"] + cmd
-    else:
-        full_cmd = cmd
-    return _subprocess.run(full_cmd, **kwargs)
-
-
-# ============================================================
-# Đường dẫn tới các công cụ CLI (trong WSL/Linux)
-# ============================================================
-# Trên Windows, các tool nằm trong WSL Ubuntu.
-# Trên Linux, tìm trong PATH + các vị trí phổ biến.
 
 def _find_tool(name: str, extra_paths: list = None) -> str:
     """Tìm đường dẫn tuyệt đối tới tool, kiểm tra PATH + các vị trí phổ biến."""
@@ -175,32 +133,21 @@ def _find_tool(name: str, extra_paths: list = None) -> str:
     # Trả về tên gốc (sẽ báo lỗi rõ ràng khi subprocess chạy)
     return name
 
-if IS_WINDOWS:
-    # Đường dẫn Linux cố định trong WSL (đã xác nhận trên máy)
-    ARGUS_BIN    = "/usr/sbin/argus"
-    RA_BIN       = "/usr/bin/ra"
-    ZEEK_BIN     = "/opt/zeek/bin/zeek"
-else:
-    ARGUS_BIN    = _find_tool("argus")
-    RA_BIN       = _find_tool("ra")
-    ZEEK_BIN     = _find_tool("zeek")
+ARGUS_BIN = _find_tool("argus")
+RA_BIN    = _find_tool("ra")
+ZEEK_BIN  = _find_tool("zeek")
 
 # ============================================================
 # Đường dẫn mặc định cho file đầu vào / đầu ra
 # ============================================================
-# Trên Windows: giữ đường dẫn gốc để tương thích ngược.
-# Trên Linux: derive từ vị trí file này (MODULE_TRICHXUAT → EC → CSV/CSV_Full_feature),
+# Derive từ vị trí file này (MODULE_TRICHXUAT → EC → CSV/CSV_Full_feature),
 # hoặc override qua env NB15_OUTPUT_DIR.
 from pathlib import Path
 _THIS_DIR = Path(__file__).resolve().parent                # .../MODULE_TRICHXUAT
 _EC_ROOT  = _THIS_DIR.parent                                # .../Extraction-and-classification
 
-if IS_WINDOWS:
-    DEFAULT_PCAP_DIR   = r"D:\1LearnandStudy\Program_Language\Python\Filepcap"
-    DEFAULT_OUTPUT_DIR = r"D:\1LearnandStudy\Program_Language\Python\CSV\CSV_Full_feature"
-else:
-    DEFAULT_PCAP_DIR   = str(_EC_ROOT / "Filepcap")
-    DEFAULT_OUTPUT_DIR = str(_EC_ROOT / "CSV" / "CSV_Full_feature")
+DEFAULT_PCAP_DIR   = str(_EC_ROOT / "Filepcap")
+DEFAULT_OUTPUT_DIR = str(_EC_ROOT / "CSV" / "CSV_Full_feature")
 
 # Allow runtime override via env (consumer sets NB15_OUTPUT_DIR to point at $EC).
 DEFAULT_OUTPUT_DIR = os.environ.get("NB15_OUTPUT_DIR", DEFAULT_OUTPUT_DIR)

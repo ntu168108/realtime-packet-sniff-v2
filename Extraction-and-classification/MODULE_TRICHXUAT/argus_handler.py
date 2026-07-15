@@ -14,7 +14,6 @@ import os
 from config import (
     ARGUS_FIELDS, ARGUS_BINARY, ARGUS_TEMP_CSV,
     ARGUS_BIN, RA_BIN,
-    IS_WINDOWS, win_to_wsl_path, wsl_run,
 )
 
 logger = logging.getLogger(__name__)
@@ -43,21 +42,13 @@ def run_argus(pcap_file: str, work_dir: str) -> str:
     if os.path.isfile(argus_csv):
         os.remove(argus_csv)
 
-    # Chuyen doi duong dan cho WSL neu can
-    if IS_WINDOWS:
-        wsl_pcap = win_to_wsl_path(pcap_file)
-        wsl_argus_bin = win_to_wsl_path(argus_bin)
-    else:
-        wsl_pcap = pcap_file
-        wsl_argus_bin = argus_bin
-
     # ------------------------------------------------------------------
     # Buoc 1a: Chuyen doi PCAP -> Argus binary
     # ------------------------------------------------------------------
     logger.info("Dang chay Argus: doc PCAP -> %s", argus_bin)
     try:
-        result = wsl_run(
-            [ARGUS_BIN, "-m", "-r", wsl_pcap, "-w", wsl_argus_bin],
+        result = subprocess.run(
+            [ARGUS_BIN, "-m", "-r", pcap_file, "-w", argus_bin],
             capture_output=True,
             text=True,
             check=True,
@@ -81,10 +72,10 @@ def run_argus(pcap_file: str, work_dir: str) -> str:
     logger.info("Dang chay ra: xuat %d truong -> %s", len(ARGUS_FIELDS), argus_csv)
 
     try:
-        result = wsl_run(
+        result = subprocess.run(
             [
                 RA_BIN,
-                "-r", wsl_argus_bin,
+                "-r", argus_bin,
                 "-n",                # Khong chuyen doi cong thanh ten dich vu
                 "-u",                # Su dung dinh dang Unix timestamp cho thoi gian
                 "-c", ",",           # Dau phan cach CSV

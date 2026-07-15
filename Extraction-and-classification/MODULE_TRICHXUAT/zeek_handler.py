@@ -14,10 +14,7 @@ import os
 import shutil
 import csv
 
-from config import (
-    ZEEK_TEMP_CSV, ZEEK_LOG_DIR, ZEEK_BIN,
-    IS_WINDOWS, win_to_wsl_path, wsl_run,
-)
+from config import ZEEK_TEMP_CSV, ZEEK_LOG_DIR, ZEEK_BIN
 
 logger = logging.getLogger(__name__)
 
@@ -58,32 +55,15 @@ def run_zeek(pcap_file: str, work_dir: str) -> str:
     os.makedirs(zeek_log_dir, exist_ok=True)
     logger.info("Dang chay Zeek: doc PCAP -> %s/", zeek_log_dir)
 
-    # Chuyen doi duong dan cho WSL neu can
-    if IS_WINDOWS:
-        wsl_pcap = win_to_wsl_path(pcap_file)
-        wsl_log_dir = win_to_wsl_path(zeek_log_dir)
-    else:
-        wsl_pcap = pcap_file
-        wsl_log_dir = zeek_log_dir
-
     try:
         # Them policy/protocols/conn/mac-logging de Zeek ghi MAC vao conn.log
-        if IS_WINDOWS:
-            result = wsl_run(
-                ["bash", "-c",
-                 f"cd '{wsl_log_dir}' && {ZEEK_BIN} -r '{wsl_pcap}' policy/protocols/conn/mac-logging"],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-        else:
-            result = wsl_run(
-                [ZEEK_BIN, "-r", pcap_file, "policy/protocols/conn/mac-logging"],
-                capture_output=True,
-                text=True,
-                check=False,
-                cwd=zeek_log_dir,
-            )
+        result = subprocess.run(
+            [ZEEK_BIN, "-r", pcap_file, "policy/protocols/conn/mac-logging"],
+            capture_output=True,
+            text=True,
+            check=False,
+            cwd=zeek_log_dir,
+        )
 
         # Neu mac-logging that bai, thu lai khong co no
         if result.returncode != 0:
@@ -92,22 +72,13 @@ def run_zeek(pcap_file: str, work_dir: str) -> str:
             )
             logger.debug("Zeek stderr: %s", result.stderr)
 
-            if IS_WINDOWS:
-                result = wsl_run(
-                    ["bash", "-c",
-                     f"cd '{wsl_log_dir}' && {ZEEK_BIN} -r '{wsl_pcap}'"],
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                )
-            else:
-                result = wsl_run(
-                    [ZEEK_BIN, "-r", pcap_file],
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                    cwd=zeek_log_dir,
-                )
+            result = subprocess.run(
+                [ZEEK_BIN, "-r", pcap_file],
+                capture_output=True,
+                text=True,
+                check=True,
+                cwd=zeek_log_dir,
+            )
 
         logger.debug("Zeek stdout: %s", result.stdout)
     except subprocess.CalledProcessError as exc:
