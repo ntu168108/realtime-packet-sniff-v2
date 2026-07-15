@@ -1,6 +1,7 @@
 #!/bin/bash
-# Usage: ./check_output.sh <path/to/final_features_nb15_with_mac.csv>
-FILE="${1:?Usage: $0 <path/to/final_features_nb15_with_mac.csv>}"
+# Usage: ./check_output.sh [path/to/final_features_nb15_with_mac.csv]
+# Khong truyen tham so -> dung path mac dinh tren may WSL cua tac gia.
+FILE="${1:-/mnt/c/Users/USER/Downloads/Source_For_Matching/4-6-DoS/filepcap/final_features_nb15_with_mac.csv}"
 
 echo "=== FINAL HEADER ==="
 head -n 1 "$FILE"
