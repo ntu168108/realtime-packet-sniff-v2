@@ -109,6 +109,7 @@ def run_zeek(pcap_file: str, work_dir: str) -> str:
             "id.orig_h", "id.resp_h", "id.orig_p", "id.resp_p",
             "proto", "service", "conn_state", "orig_l2_addr", "resp_l2_addr",
             "trans_depth", "res_bdy_len", "is_ftp_login", "http_method", "ftp_cmd",
+            "zeek_ts",
         ]
         with open(zeek_csv, "w", encoding="utf-8", newline="") as f_out:
             csv.writer(f_out).writerow(empty_cols)
@@ -138,6 +139,11 @@ def run_zeek(pcap_file: str, work_dir: str) -> str:
         elif field not in ["trans_depth", "res_bdy_len", "http_method", "is_ftp_login", "ftp_cmd"]:
             logger.warning("Truong '%s' KHONG CO trong conn.log (bo qua)", field)
 
+    # "ts" (thoi diem bat dau connection) dung de sap xep flow theo dung thu
+    # tu thoi gian truoc khi data_merger gan occurrence-index cho cac flow
+    # trung 5-tuple. Khong thuoc WANTED_FIELDS vi khong map sang cot NB15 nao.
+    ts_idx = header_fields.index("ts") if "ts" in header_fields else -1
+
     # Doc du lieu tu http.log va ftp.log (neu co)
     # Thu tim trong thu muc tam truoc, neu khong co thu tim trong thu muc lam viec (fallback)
     http_log = os.path.join(zeek_log_dir, "http.log")
@@ -162,6 +168,8 @@ def run_zeek(pcap_file: str, work_dir: str) -> str:
     new_fields_str = ["http_method", "ftp_cmd"]
     new_fields = new_fields_num + new_fields_str
     csv_columns = [f for f in WANTED_FIELDS if f in available or f in new_fields]
+    if ts_idx != -1:
+        csv_columns.append("zeek_ts")
     logger.info("Cac truong se xuat: %s", csv_columns)
 
     # ------------------------------------------------------------------
@@ -176,7 +184,10 @@ def run_zeek(pcap_file: str, work_dir: str) -> str:
             uid = parts[uid_idx] if (uid_idx != -1 and uid_idx < len(parts)) else ""
             
             for field in csv_columns:
-                if field in new_fields:
+                if field == "zeek_ts":
+                    val = parts[ts_idx] if ts_idx < len(parts) else ""
+                    row.append(val)
+                elif field in new_fields:
                     val = "0" if field in new_fields_num else ""
                     if field in ("trans_depth", "res_bdy_len", "http_method") and uid in http_data:
                         val = str(http_data[uid][field])

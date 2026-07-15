@@ -2,6 +2,49 @@
 
 All notable changes to `realtime-packet-sniff-v2` are documented in this file.
 
+## [Unreleased] - fix/ec-stale-docs-windows-cleanup-and-merge-order
+
+### Fixed
+- **`MODULE_PHANLOAI/tests/integration/test_wrapper_end_to_end.py`** — 5 of
+  42 tests in the module failed with `No such file or directory` because
+  the 7 per-family scripts (`dos_feature_filter.py`, `generic_feature_filter.py`,
+  ...) they invoked had already been consolidated into a single
+  `family_filter.py --class <Name>` (see its docstring), but the integration
+  tests were never updated to match. Updated all invocations; 42/42 pass now.
+- **Extraction-and-classification/README.md**, **MODULE_TRICHXUAT/README.md**,
+  **MODULE_AUTO/README_AUTO.md** documented the same removed per-family
+  scripts, plus a stale `Python\EaF\...` directory layout and Windows/WSL
+  `py -3`/PowerShell command examples that don't match the actual repo
+  layout (`Extraction-and-classification/` is the root) or runtime
+  (native Linux). Rewrote the usage examples and directory diagram to match
+  reality, and pointed the default output-dir example at
+  `NB15_OUTPUT_DIR`/the real default instead of a hard-coded Windows path.
+- **`check_output.sh`, `verify_output.sh`, `preview.sh`, `debug_zeek.sh`,
+  `debug_merge.sh`** hard-coded one developer's personal
+  `/mnt/c/.../Downloads/...` or `/mnt/d/...` WSL paths. They now take the
+  target CSV/work-dir path as a required `$1` argument.
+- **`config.py`, `argus_handler.py`, `zeek_handler.py`** — removed the
+  `IS_WINDOWS`/`win_to_wsl_path()`/`wsl_run()` code path entirely. The
+  pipeline only ever runs on native Linux (`sys.platform` never starts with
+  `"win"` here), so that branch was dead code; call `subprocess.run()`
+  directly instead. `install_tools.sh`'s "(WSL)" label was corrected too —
+  it's plain `apt-get` on Ubuntu, no WSL-specific step involved.
+- **`data_merger.py`** — Argus and Zeek flows sharing the same 5-tuple were
+  paired up by *file order* (`groupby(MERGE_KEYS).cumcount()`) rather than by
+  actual flow start time, so if the two tools ever emitted same-tuple flows
+  in a different relative order, `service`/`state` from Zeek could get
+  attached to the wrong Argus flow. `zeek_handler.py` now also extracts
+  conn.log's `ts` field into a new `zeek_ts` column (internal only, dropped
+  before the final CSV is written); `data_merger.py` sorts both sides by
+  their start-time column (`stime` for Argus, `zeek_ts` for Zeek) before
+  assigning the occurrence index, so the Nth flow of a repeated 5-tuple is
+  matched by chronological order instead of incidental file order.
+
+Verified end-to-end on a real capture: ran `extractor.py` +
+`add_features.py` against an existing pcap under `/var/lib/sniff-web/sniff_data/`,
+same row count (3,793) and same 40/50-column NB15 schema as before these
+changes, with no `zeek_ts`/`_occ` columns leaking into the output CSV.
+
 ## [Unreleased] - feat/web-ui-overhaul-2026-07-14
 
 Dashboard/Capture UI overhaul in one push. Full detail (rationale, gotchas,

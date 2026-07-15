@@ -62,9 +62,15 @@ def merge_and_export(
     # Giải pháp: gán occurrence-index (_occ) = thứ tự xuất hiện của flow
     # trong từng nhóm 5-tuple cho cả 2 nguồn, rồi merge trên (5-tuple + _occ).
     # => flow thứ N của Argus khớp đúng flow thứ N của Zeek (1-1).
+    #
+    # Để "thứ N" của Argus khớp đúng "thứ N" của Zeek (chứ không chỉ khớp
+    # đúng thứ tự xuất hiện trong file, có thể khác nhau giữa 2 tool), sắp
+    # xếp cả 2 theo thời gian bắt đầu flow (stime/zeek_ts) trước khi cumcount.
     # ------------------------------------------------------------------
     df_argus = df_argus.copy()
     df_zeek = df_zeek.copy()
+    df_argus = _sort_by_time(df_argus, "stime")
+    df_zeek = _sort_by_time(df_zeek, "zeek_ts")
     df_argus["_occ"] = df_argus.groupby(MERGE_KEYS).cumcount()
     df_zeek["_occ"] = df_zeek.groupby(MERGE_KEYS).cumcount()
 
@@ -76,9 +82,8 @@ def merge_and_export(
         suffixes=("_x", "_y"),  # Argus = _x, Zeek = _y
     )
 
-    # _occ chỉ phục vụ căn chỉnh, bỏ sau khi merge
-    if "_occ" in df_merged.columns:
-        df_merged = df_merged.drop(columns=["_occ"])
+    # _occ va zeek_ts chi phuc vu can chinh, bo sau khi merge
+    df_merged = df_merged.drop(columns=[c for c in ("_occ", "zeek_ts") if c in df_merged.columns])
 
     logger.info("  Ket qua merge: %d dong, %d cot", len(df_merged), len(df_merged.columns))
 
@@ -133,6 +138,31 @@ def merge_and_export(
         _cleanup_temp_files(work_dir, base_name=base_name, output_dir=output_dir, output_name=output_name)
 
     return output_path
+
+
+def _sort_by_time(df: pd.DataFrame, time_col: str) -> pd.DataFrame:
+    """
+    Sap xep DataFrame theo cot thoi gian (tang dan) truoc khi gan _occ.
+
+    Dong khong co gia tri thoi gian hop le (thieu cot, rong, khong parse
+    duoc) duoc day xuong cuoi (giu nguyen thu tu tuong doi, on dinh) thay
+    vi lam lech ca nhom.
+
+    Args:
+        df:       DataFrame can sap xep (Argus hoac Zeek).
+        time_col: Ten cot thoi gian ('stime' cho Argus, 'zeek_ts' cho Zeek).
+
+    Returns:
+        DataFrame da sap xep (hoac nguyen ban neu khong co cot thoi gian).
+    """
+    if time_col not in df.columns:
+        return df
+    sort_key = pd.to_numeric(df[time_col], errors="coerce")
+    return (
+        df.assign(_sort_ts=sort_key)
+        .sort_values("_sort_ts", kind="stable", na_position="last")
+        .drop(columns=["_sort_ts"])
+    )
 
 
 def _resolve_mac_duplicates(df: pd.DataFrame, mac_col: str) -> pd.DataFrame:
