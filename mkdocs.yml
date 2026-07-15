@@ -5,6 +5,11 @@ repo_name: ntu168108/realtime-packet-sniff-v2
 docs_dir: docs
 site_dir: site
 
+# Internal AI-agent planning docs (superpowers:writing-plans output) — not
+# user-facing, must not be built/published/indexed on the public site.
+exclude_docs: |
+  superpowers/
+
 theme:
   name: material
   features:
@@ -62,7 +67,11 @@ markdown_extensions:
       permalink: true
   - pymdownx.highlight:
       anchor_linenums: true
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.tasklist:

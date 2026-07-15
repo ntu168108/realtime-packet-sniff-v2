@@ -343,6 +343,7 @@ Khác với 11.3 (biến môi trường của `ec-consumer`), các khoá dưới
 
 ---
 
+<span id="day-to-day-operations"></span>
 ## Vận hành hàng ngày
 
 ### Khởi động / dừng / restart

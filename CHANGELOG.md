@@ -2,6 +2,52 @@
 
 All notable changes to `realtime-packet-sniff-v2` are documented in this file.
 
+## [Unreleased] - fix/mkdocs-site-i18n-and-mermaid
+
+Audited the actual **built/published** docs site (`mkdocs build --strict`,
+not just the raw markdown source) since that's what users read on GitHub
+Pages. Found issues invisible from reading the `.md` files directly.
+
+### Added
+- `docs/getting-started/configuration.vi.md` and
+  `docs/operations/architecture.vi.md` — full Vietnamese translations.
+  Previously these 2 pages had no `.vi.md` counterpart, so on the `/vi/`
+  site the nav label was translated ("Cấu hình", "Kiến trúc") but the page
+  body silently rendered in English — confirmed by inspecting the built
+  HTML (`<title>Kiến trúc - realtime-packet-sniff</title>` over an
+  `<h1>Architecture</h1>` body).
+
+### Fixed
+- **Mermaid diagram in `architecture.md`/`architecture.vi.md` never
+  rendered as a diagram** — `mkdocs.yml`'s `pymdownx.superfences` had no
+  `custom_fences` mapping for `mermaid`, which Material for MkDocs requires
+  to turn a ` ```mermaid ` block into `<pre class="mermaid">` (and load its
+  renderer). Confirmed via built output: without the fix the block stayed
+  literal ` <pre><code>flowchart LR... ` text; with it, `class="mermaid"`
+  appears and Material's bundled JS (`bundle.*.min.js`, confirmed contains
+  mermaid support) picks it up. This affected the real GitHub Pages site,
+  not just this repo checkout.
+- **Internal AI-agent planning doc leaked onto the public docs site** —
+  `docs/superpowers/plans/2026-07-12-dosguard-adaptive-backpressure.md` (a
+  `superpowers:writing-plans` implementation plan, not user documentation)
+  was outside the `nav:` but still built, deployed, and indexed in the
+  site's search (confirmed present in `site/search/search_index.json`).
+  Added `exclude_docs: superpowers/` to `mkdocs.yml` so it's excluded from
+  the build entirely.
+- **Broken cross-language anchor**: `architecture.md` links to
+  `deployment.md#day-to-day-operations`; the heading in
+  `deployment.vi.md` is translated to "Vận hành hàng ngày", which
+  mkdocs' slugifier turns into `#van-hanh-hang-ngay` — so on the `/vi/`
+  site that link resolved to the right page but didn't scroll to the
+  section. Added an explicit `<span id="day-to-day-operations">` anchor
+  right above the Vietnamese heading so both anchor names resolve.
+
+Verified: `mkdocs build --strict` exits 0 with zero warnings (previously
+logged 2 INFO-level issues — nav-excluded file present, cross-language
+anchor mismatch — that `--strict` doesn't fail on but are real content
+bugs); manually inspected the built HTML for both languages to confirm
+the mermaid class, the Vietnamese page bodies, and the fixed anchor.
+
 ## [Unreleased] - fix/capture-table-mac-position-and-ipv6-overflow
 
 ### Fixed
