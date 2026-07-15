@@ -104,8 +104,12 @@ sudo sed -i "s|/home/tu/realtime-packet-sniff|${REPO_DIR}|g" \
     /etc/systemd/system/sniff-producer.service \
     /etc/systemd/system/ec-consumer.service
 
-# Thay tên user trong ec-consumer.service (service này chạy không cần root)
-sudo sed -i "s|User=tu|User=${USER}|g" /etc/systemd/system/ec-consumer.service
+# Thay tên user trong kafka.service va ec-consumer.service (2 service nay
+# chay khong can root; neu quen kafka.service, systemctl start kafka se
+# fail tren may khac vi user "tu" khong ton tai)
+sudo sed -i "s|User=tu|User=${USER}|g" \
+    /etc/systemd/system/kafka.service \
+    /etc/systemd/system/ec-consumer.service
 
 # Thêm PYTHONPATH để systemd tìm thấy packages đã cài với --break-system-packages
 PYPATH=$(python3 -c "import site; print(site.getusersitepackages())")
@@ -116,18 +120,20 @@ sudo sed -i "s|Environment=PYTHONPATH=.*|Environment=PYTHONPATH=${PYPATH}|g" \
 
 ### 9.3 Nội dung 3 unit files (để tham chiếu)
 
-**`kafka.service`** — Kafka KRaft broker:
+**`kafka.service`** — Kafka KRaft broker (`User=tu` chỉ là placeholder, được
+patch lại thành user thật ở bước 9.2 trên; nếu quên patch, service sẽ không
+khởi động được trên máy nào không có user tên `tu`):
 ```ini
 [Unit]
 Description=Apache Kafka (KRaft)
 After=network.target
-
 [Service]
+User=tu
+Environment=KAFKA_HEAP_OPTS=-Xmx1g -Xms512m
 ExecStart=/opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/server.properties
 ExecStop=/opt/kafka/bin/kafka-server-stop.sh
 Restart=always
 RestartSec=5
-
 [Install]
 WantedBy=multi-user.target
 ```

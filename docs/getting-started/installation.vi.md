@@ -79,12 +79,13 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 
 | Package | Phiên bản | Dùng để |
 |---------|-----------|---------|
-| `scapy` | ≥2.5.0 | Bắt gói tin qua libpcap |
+| `scapy` | ==2.7.0 | Bắt gói tin qua libpcap |
 | `kafka-python-ng` | 2.2.3 | Kafka producer/consumer |
-| `clickhouse-driver` | 0.2.9 | Ghi dữ liệu vào ClickHouse |
-| `pandas` | 2.2.2 | Xử lý CSV, tính điểm phân loại |
-| `numpy` | 1.26.4 | Vectorized scoring |
-| `pyyaml` | 6.0.1 | Đọc file cấu hình |
+| `clickhouse-driver` | 0.2.10 | Ghi dữ liệu vào ClickHouse |
+| `pandas` | 2.3.3 | Xử lý CSV, tính điểm phân loại |
+| `numpy` | 2.2.6 | Vectorized scoring |
+| `pyyaml` | 6.0.3 | Đọc file cấu hình |
+| `pytest` | 9.1.1 | Chạy bộ test tích hợp |
 
 ### 2.3 Kiểm tra cài đặt
 

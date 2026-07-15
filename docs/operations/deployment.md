@@ -101,7 +101,9 @@ sudo sed -i "s|/home/tu/realtime-packet-sniff|${REPO_DIR}|g" \
     /etc/systemd/system/sniff-producer.service \
     /etc/systemd/system/ec-consumer.service
 
-sudo sed -i "s|User=tu|User=${USER}|g" /etc/systemd/system/ec-consumer.service
+sudo sed -i "s|User=tu|User=${USER}|g" \
+    /etc/systemd/system/kafka.service \
+    /etc/systemd/system/ec-consumer.service
 
 # Add PYTHONPATH so systemd finds packages installed with --break-system-packages
 PYPATH=$(python3 -c "import site; print(site.getusersitepackages())")
@@ -112,18 +114,20 @@ sudo sed -i "s|Environment=PYTHONPATH=.*|Environment=PYTHONPATH=${PYPATH}|g" \
 
 ### 9.3 Unit file reference
 
-**`kafka.service`** — single-broker KRaft:
+**`kafka.service`** — single-broker KRaft (`User=tu` here is a placeholder
+patched to your own user by 9.2 above; without that patch the service fails
+to start on any machine where the login user isn't literally `tu`):
 ```ini
 [Unit]
 Description=Apache Kafka (KRaft)
 After=network.target
-
 [Service]
+User=tu
+Environment=KAFKA_HEAP_OPTS=-Xmx1g -Xms512m
 ExecStart=/opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/server.properties
 ExecStop=/opt/kafka/bin/kafka-server-stop.sh
 Restart=always
 RestartSec=5
-
 [Install]
 WantedBy=multi-user.target
 ```
@@ -307,7 +311,8 @@ sudo bash sniff-web/scripts/install_web.sh
 This script runs 8 idempotent steps:
 
 1. **Python deps** — installs `sniff-web/requirements-web.txt` (fastapi, uvicorn,
-   pyjwt, bcrypt, clickhouse-driver, kafka-python-ng, psutil). Uses
+   python-multipart, pyjwt, bcrypt, clickhouse-driver, kafka-python-ng,
+   websockets, psutil, httpx2 for tests). Uses
    `--break-system-packages` on Ubuntu 24.04 and `--ignore-installed` to
    coexist with apt-installed PyJWT.
 2. **Node + frontend** — installs Node.js if missing, then `npm install` +

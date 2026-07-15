@@ -2,6 +2,40 @@
 
 All notable changes to `realtime-packet-sniff-v2` are documented in this file.
 
+## [Unreleased] - fix/deployment-docs-new-machine-audit
+
+### Fixed
+- **`deploy/systemd/kafka.service` would fail to start on any fresh machine
+  where the login user isn't literally named `tu`.** The unit file ships
+  `User=tu` as a placeholder meant to be patched to the real user during
+  install (same pattern as `ec-consumer.service`), but
+  `docs/operations/deployment.md`/`deployment.vi.md` Step 9.2's `sed` command
+  only patched `ec-consumer.service`, never `kafka.service`. Since Step 10.1
+  (`sudo systemctl start kafka`) is the very first service started, this
+  broke the whole pipeline at the first command on any machine other than
+  the original author's. Added `kafka.service` to the patch command in both
+  language versions.
+- `kafka.service` was also missing `ExecStop=/opt/kafka/bin/kafka-server-stop.sh`
+  even though both docs' "unit file reference" already documented it as
+  present — added it for a clean shutdown instead of relying on the default
+  SIGTERM. The reference snippets in both docs were also out of sync with
+  the real file (missing `User=tu` / `Environment=KAFKA_HEAP_OPTS=...`);
+  updated to match.
+- `docs/getting-started/installation.md`/`installation.vi.md` — the package
+  version table (`clickhouse-driver`, `pandas`, `numpy`, `pyyaml`, `scapy`)
+  had drifted from the pinned versions in `requirements-integration.txt`;
+  updated to match, and added the now-bundled `pytest` dependency. Also
+  bumped the stale `**Version:** v0.4.0` banner (CHANGELOG has since moved
+  through v1.0.0, v1.1.0, and further unreleased work) and the "36 automated
+  tests" count in the directory reference, now 52.
+- `docs/operations/deployment.md` Step 11.2.1 listed `sniff-web/requirements-web.txt`'s
+  packages incompletely (missing `python-multipart`, `websockets`, `httpx2`
+  which are all in the actual file).
+
+Found by auditing "set this project up on a brand-new machine from the docs
+alone" end to end and diffing every doc claim (unit files, package tables,
+test counts, version banners) against the actual tracked files.
+
 ## [Unreleased] - fix/ec-stale-docs-windows-cleanup-and-merge-order
 
 ### Fixed

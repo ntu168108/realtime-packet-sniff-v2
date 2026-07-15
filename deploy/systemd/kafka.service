@@ -5,6 +5,7 @@ After=network.target
 User=tu
 Environment=KAFKA_HEAP_OPTS=-Xmx1g -Xms512m
 ExecStart=/opt/kafka/bin/kafka-server-start.sh /opt/kafka/config/server.properties
+ExecStop=/opt/kafka/bin/kafka-server-stop.sh
 Restart=always
 RestartSec=5
 [Install]

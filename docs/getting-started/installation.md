@@ -2,7 +2,7 @@
 
 **Tested on:** Ubuntu 22.04 / 24.04 LTS (x86-64)  
 **Estimated setup time:** 45 – 90 minutes  
-**Version:** v0.4.0
+**Version:** v1.1.0 (main branch; see `CHANGELOG.md` for fixes since this tag)
 
 ---
 
@@ -133,12 +133,13 @@ pip install -r requirements-integration.txt
 
 | Package | Version | Used for |
 |---------|---------|----------|
-| `scapy` | ≥2.5.0 | Packet capture via libpcap |
+| `scapy` | ==2.7.0 | Packet capture via libpcap |
 | `kafka-python-ng` | 2.2.3 | Kafka producer / consumer |
-| `clickhouse-driver` | 0.2.9 | Inserting data into ClickHouse |
-| `pandas` | 2.2.2 | CSV processing, scoring |
-| `numpy` | 1.26.4 | Vectorized scoring |
-| `pyyaml` | 6.0.1 | Config file parsing |
+| `clickhouse-driver` | 0.2.10 | Inserting data into ClickHouse |
+| `pandas` | 2.3.3 | CSV processing, scoring |
+| `numpy` | 2.2.6 | Vectorized scoring |
+| `pyyaml` | 6.0.3 | Config file parsing |
+| `pytest` | 9.1.1 | Running the integration test suite |
 
 ### 2.3 Verify the installation
 
@@ -538,7 +539,7 @@ realtime-packet-sniff-v2/
 │   └── grafana/                # Datasource + dashboard provisioning
 ├── sql/
 │   └── clickhouse_init.sql     # DDL: 7 flows_<family> + flows_all + pipeline_runs
-├── tests/integration_tests/    # 36 automated tests
+├── tests/integration_tests/    # 52 automated tests
 └── docs/
     ├── index.md                # English home page
     ├── getting-started/        # quickstart, installation, configuration
