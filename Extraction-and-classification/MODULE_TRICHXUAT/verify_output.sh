@@ -1,5 +1,6 @@
 #!/bin/bash
-FILE="/mnt/d/1LearnandStudy/Program_Language/Python/TrichXuat/final_features_nb15_with_mac.csv"
+# Usage: ./verify_output.sh <path/to/final_features_nb15_with_mac.csv>
+FILE="${1:?Usage: $0 <path/to/final_features_nb15_with_mac.csv>}"
 
 echo "=== HEADER ==="
 head -1 "$FILE"

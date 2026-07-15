@@ -15,15 +15,15 @@ MODULE_TRICHXUAT
    └─ add_features.py  →  CSV/CSV_Full_feature/<base>_dos_features.csv (50 cột: rename + rule-based + sliding window)
    │
    ▼
-MODULE_PHANLOAI  (7 filter, chế độ file đơn lẻ)
-   ├─ generic_feature_filter.py        →  CSV/Filter_Generic_feature/
-   ├─ dos_feature_filter.py            →  CSV/Filter_DoS_feature/
-   │    └─ dos_classifier.py           →  Phân loại DoS chi tiết (SYN/UDP/ICMP) và xuất cảnh báo
-   ├─ exploits_feature_filter.py       →  CSV/Filter_Exploits_feature/
-   ├─ fuzzers_feature_filter.py        →  CSV/Filter_Fuzzers_feature/
-   ├─ analysis_feature_filter.py       →  CSV/Filter_Analysis_feature/
-   ├─ reconnaissance_feature_filter.py →  CSV/Filter_Reconnaissance_feature/
-   └─ shellcode_feature_filter.py      →  CSV/Filter_Shellcode_feature/
+MODULE_PHANLOAI  (family_filter.py --class <Name>, chế độ file đơn lẻ)
+   ├─ family_filter.py --class Generic        →  CSV/Filter_Generic_feature/
+   ├─ family_filter.py --class DoS            →  CSV/Filter_DoS_feature/
+   │    └─ dos_classifier.py                  →  Phân loại DoS chi tiết (SYN/UDP/ICMP) và xuất cảnh báo
+   ├─ family_filter.py --class Exploits       →  CSV/Filter_Exploits_feature/
+   ├─ family_filter.py --class Fuzzers        →  CSV/Filter_Fuzzers_feature/
+   ├─ family_filter.py --class Analysis       →  CSV/Filter_Analysis_feature/
+   ├─ family_filter.py --class Reconnaissance →  CSV/Filter_Reconnaissance_feature/
+   └─ family_filter.py --class Shellcode      →  CSV/Filter_Shellcode_feature/
    │
    ▼
 MODULE_AUTO  (điều phối + theo dõi thư mục)
@@ -46,11 +46,10 @@ Python\
 │   │   ├── add_features.py
 │   │   ├── config.py            ← cấu hình đường dẫn + tool WSL
 │   │   └── ...
-│   ├── MODULE_PHANLOAI\         ← 7 filter phân loại và engine phân loại
-│   │   ├── generic_feature_filter.py
-│   │   ├── dos_feature_filter.py
+│   ├── MODULE_PHANLOAI\         ← filter phân loại (tham số hoá) và engine phân loại
+│   │   ├── family_filter.py     ← 1 script dùng chung cho cả 7 họ (--class <Name>)
 │   │   ├── dos_classifier.py    ← Engine phân loại tập dữ liệu DoS
-│   │   └── ... (5 filter còn lại)
+│   │   └── ...
 │   └── MODULE_AUTO\             ← tự động hóa
 │       ├── auto_pipeline.py
 │       ├── pcap_watcher.py
@@ -118,11 +117,11 @@ py -3 EaF\MODULE_TRICHXUAT\extractor.py Filepcap\synf5k.pcap
 # Bước 2: bổ sung đặc trưng
 py -3 EaF\MODULE_TRICHXUAT\add_features.py CSV\CSV_Full_feature\synf5k_raw.csv
 
-# Bước 3: chạy 1 filter (hoặc cả thư mục)
-py -3 EaF\MODULE_PHANLOAI\dos_feature_filter.py CSV\CSV_Full_feature\synf5k_dos_features.csv
+# Bước 3: chạy 1 filter (hoặc cả thư mục) — tham số --class chọn họ tấn công
+py -3 EaF\MODULE_PHANLOAI\family_filter.py --class DoS CSV\CSV_Full_feature\synf5k_dos_features.csv
 
 # Bước 4: chấm điểm rủi ro & phân loại DoS chuyên sâu (chỉ dành cho luồng DoS)
-# Lưu ý: Nếu truyền file CSV thô, dos_classifier.py sẽ tự động chạy dos_feature_filter.py trước.
+# Lưu ý: Nếu truyền file CSV thô, dos_classifier.py sẽ tự động chạy family_filter.py --class DoS trước.
 py -3 EaF\MODULE_PHANLOAI\dos_classifier.py --csv CSV\CSV_Full_feature\synf5k_dos_features.csv
 ```
 

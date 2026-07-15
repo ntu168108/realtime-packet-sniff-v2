@@ -21,10 +21,14 @@ WRAPPERS = [
 
 
 def _run_wrapper(class_name: str, lower: str, in_csv: Path, out_csv: Path) -> subprocess.CompletedProcess:
-    """Invoke <lower>_feature_filter.py via subprocess."""
-    wrapper = PHANLOAI_DIR / f"{lower}_feature_filter.py"
+    """Invoke family_filter.py --class <class_name> via subprocess.
+
+    The 7 per-family wrapper scripts (dos_feature_filter.py, ...) were
+    consolidated into family_filter.py; see its module docstring.
+    """
+    wrapper = PHANLOAI_DIR / "family_filter.py"
     return subprocess.run(
-        [sys.executable, str(wrapper), str(in_csv), "-o", str(out_csv)],
+        [sys.executable, str(wrapper), "--class", class_name, str(in_csv), "-o", str(out_csv)],
         capture_output=True,
         text=True,
         cwd=str(PHANLOAI_DIR.parent),
@@ -102,7 +106,7 @@ def test_wrapper_with_directory_input(tmp_path):
 
 def test_wrapper_help_works(tmp_path):
     """Wrapper --help exits 0 and shows description."""
-    wrapper = PHANLOAI_DIR / "dos_feature_filter.py"
+    wrapper = PHANLOAI_DIR / "family_filter.py"
     result = subprocess.run(
         [sys.executable, str(wrapper), "--help"],
         capture_output=True,
@@ -110,4 +114,4 @@ def test_wrapper_help_works(tmp_path):
         cwd=str(PHANLOAI_DIR.parent),
     )
     assert result.returncode == 0
-    assert "Filter + classify DoS attacks" in result.stdout
+    assert "Filter + classify family attacks" in result.stdout
