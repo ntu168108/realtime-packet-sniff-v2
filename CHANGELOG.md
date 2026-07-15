@@ -2,6 +2,42 @@
 
 All notable changes to `realtime-packet-sniff-v2` are documented in this file.
 
+## [Unreleased] - fix/capture-table-mac-position-and-ipv6-overflow
+
+### Fixed
+- **Capture page packet table: MAC address line landed in the wrong spot /
+  overlapped the next row.** `PacketTable.tsx`'s `@tanstack/react-virtual`
+  virtualizer used a fixed `estimateSize: () => 34` for every row, but rows
+  with a `src_mac`/`dst_mac` render 2 lines (IP:port, then MAC on its own
+  line via `<br/>`) and are taller than 34px in the real DOM. Since
+  virtualized rows are absolutely positioned from the *estimated* cumulative
+  height, the next row's `translateY` didn't account for the extra line,
+  so it started before the MAC line finished rendering — visually the MAC
+  text (or the row below it) landed on top of the next packet's row. Fixed
+  by wiring up `virtualizer.measureElement` (ref + `data-index`) on each row
+  and dropping the fixed `height`, so react-virtual measures each row's
+  real rendered height and positions subsequent rows correctly instead of
+  guessing.
+- **Long addresses (mainly IPv6) overflowed into the next column/box**
+  instead of wrapping or truncating, in 3 places:
+  - `PacketTable.tsx`'s Source/Destination cells are a fixed 190px grid
+    column; an IPv6 address is one long unbreakable token with no spaces,
+    so without `overflow-wrap` the browser doesn't wrap it and it bleeds
+    into the Destination column. Added `overflowWrap: 'anywhere'`.
+  - `.top-flow` (Dashboard "Top talkers" and Capture "Live conversations"
+    cards) and `.alert-row .label`/`.flow` (AlertFeed) are `1fr` grid
+    tracks with no `overflow`/`text-overflow`/`min-width: 0` — a long IPv6
+    `src → dst` string forced the row wider than its card, pushing into or
+    overlapping the fixed-width KB/packet-count/copy-button columns next to
+    it. Added `min-width: 0` + `overflow: hidden` + `text-overflow: ellipsis`
+    + `white-space: nowrap` so long flows truncate with `…` instead of
+    spilling into neighboring cells.
+
+Verified: `tsc && vite build` and `vitest run` (3/3) both pass; manually
+reasoned through both a 39-char IPv6 literal and a MAC-bearing row to
+confirm the fixed-width/fixed-height assumptions that caused the overlap
+are gone.
+
 ## [Unreleased] - fix/deployment-docs-new-machine-audit
 
 ### Fixed

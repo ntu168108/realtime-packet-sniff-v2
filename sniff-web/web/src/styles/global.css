@@ -151,6 +151,7 @@ td.mono { font-family: var(--mono); }
   align-items: center; padding: 6px 8px; border-radius: 4px; font-size: 12px; }
 .alert-row:hover { background: var(--accent-bg); }
 .alert-row .ts { color: var(--muted); font-family: var(--mono); }
+.alert-row .label, .alert-row .flow { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .alert-row .label { font-weight: 600; }
 .alert-row .flow { color: var(--muted); font-family: var(--mono); font-size: 11px; }
 .alert-row .copy { font-size: 11px; padding: 2px 8px; }
@@ -165,7 +166,7 @@ td.mono { font-family: var(--mono); }
 .top-row { display: grid; grid-template-columns: 1fr 80px 80px; gap: 8px; padding: 4px 8px;
   border-radius: 4px; font-size: 12px; align-items: center; }
 .top-row:hover { background: var(--accent-bg); }
-.top-flow { font-family: var(--mono); }
+.top-flow { font-family: var(--mono); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .top-bytes, .top-pkts { font-family: var(--mono); text-align: right; color: var(--muted); }
 
 /* --- Credentials page --------------------------------------------------- */

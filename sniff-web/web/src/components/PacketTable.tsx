@@ -41,6 +41,10 @@ export function PacketTableInner({
   const virtualizer = useVirtualizer({
     count: filtered.length,
     getScrollElement: () => parentRef.current,
+    // Rows with a MAC address wrap to 2 lines and are taller than 34px;
+    // measureElement (below, on each row) re-measures the real DOM height
+    // after render so later rows don't get positioned assuming a fixed
+    // 34px and overlap the row above them.
     estimateSize: () => 34,
     overscan: 10,
   });
@@ -98,16 +102,17 @@ export function PacketTableInner({
             return (
               <div
                 key={p.stt}
+                ref={virtualizer.measureElement}
+                data-index={v.index}
                 style={{
                   position: 'absolute',
                   top: 0,
                   left: 0,
                   width: '100%',
-                  height: `${v.size}px`,
                   transform: `translateY(${v.start}px)`,
                   display: 'grid',
                   gridTemplateColumns: '60px 100px 190px 190px 70px 60px 1fr',
-                  padding: '0 8px',
+                  padding: '4px 8px',
                   alignItems: 'center',
                   fontSize: 12,
                   borderBottom: '1px solid var(--border)',
@@ -117,7 +122,7 @@ export function PacketTableInner({
                   {p.stt}
                 </span>
                 <span className="mono">{time}</span>
-                <span className="mono" style={{ lineHeight: 1.3 }}>
+                <span className="mono" style={{ lineHeight: 1.3, overflowWrap: 'anywhere', minWidth: 0 }}>
                   {p.src}
                   {p.src_port ? `:${p.src_port}` : ''}
                   {p.src_mac && (
@@ -127,7 +132,7 @@ export function PacketTableInner({
                     </>
                   )}
                 </span>
-                <span className="mono" style={{ lineHeight: 1.3 }}>
+                <span className="mono" style={{ lineHeight: 1.3, overflowWrap: 'anywhere', minWidth: 0 }}>
                   {p.dst}
                   {p.dst_port ? `:${p.dst_port}` : ''}
                   {p.dst_mac && (
