@@ -2,6 +2,44 @@
 
 All notable changes to `realtime-packet-sniff-v2` are documented in this file.
 
+## [Unreleased] - fix/sniff-web-node-version-requirement
+
+Reproduced live: installing Node 18.19.1 per the old docs, `install_web.sh`
+ran `npm install` clean (only an `EBADENGINE` warning), then `npm run build`
+crashed immediately with `SyntaxError: The requested module 'node:util'
+does not provide an export named 'styleText'`.
+
+### Fixed
+- **`sniff-web/web/package.json` pins `vite@8` / `@vitejs/plugin-react@6`,
+  both requiring Node `^20.19.0 || >=22.12.0`** (confirmed via
+  `npm view vite engines` / `npm view @vitejs/plugin-react engines`) — the
+  `styleText` API used by rolldown (vite 8's bundler) only exists from Node
+  20.12+. Docs previously said "18+", which is wrong for the currently
+  pinned versions.
+  - `docs/getting-started/installation.md` / `.vi.md` untouched (no Node
+    requirement there); `docs/operations/deployment.md` / `.vi.md` §11.1:
+    corrected the Node.js requirement row to **20.19+ (or 22.12+, Node 22
+    LTS recommended)**, added a callout explaining the failure mode up
+    front, added NodeSource + nvm upgrade instructions, and added a
+    "clean reinstall" step for anyone who already ran `npm install` under
+    an old Node.
+  - `docs/operations/troubleshooting.md` / `deployment.vi.md` §11.4: added
+    a row mapping the `styleText` SyntaxError to its fix; corrected two
+    adjacent rows that still said "Node 18+" / "NodeSource 20.x".
+- **`sniff-web/scripts/install_web.sh`** — the auto-upgrade check
+  (`NODE_MAJOR -lt 18`) didn't match the real requirement above, so a
+  machine with Node 18, 19, 20.0–20.18, or 21.x would pass the check
+  and still hit the same crash even through the "zero-touch" installer.
+  Replaced with a proper major.minor check against
+  `^20.19.0 || >=22.12.0`, and changed the NodeSource fallback from
+  `setup_20.x` to `setup_22.x` to match the docs' Node 22 LTS
+  recommendation.
+
+Verified: `mkdocs build --strict` (0 warnings); `bash -n install_web.sh`
+(syntax OK); manually exercised the new version-check logic against all
+boundary cases (18.x, 19.x, 20.0–20.18, 21.x correctly rejected; 20.19+,
+22.12+, 23+ correctly accepted).
+
 ## [Unreleased] - fix/installation-doc-clickhouse-password
 
 ### Fixed

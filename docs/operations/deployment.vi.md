@@ -438,12 +438,58 @@ python3 MODULE_PHANLOAI/dos_classifier.py \
 
 ### 11.1 Yêu cầu trước khi cài
 
+> ⚠️ **Build sẽ FAIL nếu Node < 20.19:** `vite@8` và `@vitejs/plugin-react@6`
+> đang được pin trong `package.json`/`package-lock.json` của frontend đều yêu
+> cầu `"engines": { "node": "^20.19.0 || >=22.12.0" }` (xác nhận qua
+> `npm view vite engines` / `npm view @vitejs/plugin-react engines`, và đã tái
+> hiện thực tế — cài Node 18.19.1 thì `npm install` chạy được, chỉ warn
+> `EBADENGINE`, nhưng `npm run build` crash ngay với lỗi:
+> `SyntaxError: The requested module 'node:util' does not provide an export
+> named 'styleText'` — API này chỉ có từ Node 20.12 trở lên. Kiểm tra version
+> hiện có trước:
+> ```bash
+> node -v
+> ```
+
 | Thành phần | Phiên bản tối thiểu | Lý do |
 |------------|----------------------|--------|
 | Python | 3.10+ | đã cài ở Bước 2 |
-| Node.js | **18+** (vite 5 không chạy trên Node 12) | build React frontend |
-| npm | 9+ | kèm theo Node 18+ |
+| Node.js | **20.19+** (hoặc 22.12+; khuyến nghị Node 22 LTS) — `vite@8`/`@vitejs/plugin-react@6` yêu cầu, Node cũ hơn sẽ crash với lỗi `styleText` ở trên | build React frontend |
+| npm | 10+ | kèm theo Node 20.19+ |
 | disk trống | 800 MB | node_modules (~500MB) + frontend build |
+
+**Nâng cấp Node.js**, chọn 1 trong 2 cách:
+
+a) **Qua NodeSource (khuyến nghị cho server, persistent qua reboot):**
+
+```bash
+sudo apt-get remove -y nodejs
+sudo apt-get autoremove -y
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt-get install -y nodejs
+node -v   # xác nhận v22.x.x
+```
+
+b) **Qua nvm** (nếu không muốn đổi Node hệ thống — lưu ý cách này chỉ ảnh
+   hưởng bước build một lần, không ảnh hưởng lúc service chạy thật vì
+   sniff-web chỉ serve file tĩnh + Python backend sau khi build xong):
+
+```bash
+nvm install 22
+nvm use 22
+node -v
+```
+
+**Nếu đã lỡ cài `node_modules` bằng Node cũ**, xóa và cài lại sạch trước khi
+build lại:
+
+```bash
+cd sniff-web/web
+rm -rf node_modules package-lock.json
+npm install
+npm run build
+ls -la dist/index.html   # phải tồn tại, xác nhận build thành công
+```
 
 ### 11.2 Cài Web GUI
 
@@ -500,6 +546,7 @@ startup đọc và tự restart capture.
 | `chown: invalid user: 'tu:tu'` | User không phải `tu` | Re-run script — dùng `${SUDO_USER}` thực |
 | Login 401 với `admin/sniff` ngay sau install | `config.yaml` không có hash thật | Re-run script — bản mới auto-generate |
 | `setcap: Invalid file '/usr/bin/python3'` | Symlink | Re-run script — fix realpath |
+| `SyntaxError: ... does not provide an export named 'styleText'` | Node quá cũ (< 20.12), không đủ cho vite 8/rolldown | Nâng Node lên 22 LTS (xem 11.1), xóa node_modules, npm install + npm run build lại |
 
 ### 11.5 Đổi mật khẩu admin
 

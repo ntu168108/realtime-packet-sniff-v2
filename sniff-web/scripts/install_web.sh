@@ -68,12 +68,25 @@ if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
         nodejs npm
 fi
 
-# Some distros (Ubuntu 22.04) ship an old node (v12) that vite >=5 won't run on.
+# vite@8 / @vitejs/plugin-react@6 require Node "^20.19.0 || >=22.12.0"
+# (see sniff-web/web/package.json). Anything older — including apt's stock
+# Node on Ubuntu 22.04 (v12) and 24.04 (v18) — builds fine but crashes at
+# `npm run build` with: SyntaxError: ... does not provide an export named
+# 'styleText' (that node:util API only exists from Node 20.12+).
 NODE_MAJOR="$(node -e 'console.log(process.versions.node.split(".")[0])' 2>/dev/null || echo 0)"
-if [[ "${NODE_MAJOR:-0}" -lt 18 ]]; then
-    echo "    node ${NODE_MAJOR:-?}.x too old for vite >=5; installing NodeSource 20.x..."
+NODE_MINOR="$(node -e 'console.log(process.versions.node.split(".")[1])' 2>/dev/null || echo 0)"
+NODE_OK=0
+if [[ "${NODE_MAJOR:-0}" -eq 20 && "${NODE_MINOR:-0}" -ge 19 ]]; then
+    NODE_OK=1
+elif [[ "${NODE_MAJOR:-0}" -eq 22 && "${NODE_MINOR:-0}" -ge 12 ]]; then
+    NODE_OK=1
+elif [[ "${NODE_MAJOR:-0}" -gt 22 ]]; then
+    NODE_OK=1
+fi
+if [[ "$NODE_OK" -ne 1 ]]; then
+    echo "    node ${NODE_MAJOR:-?}.${NODE_MINOR:-?}.x doesn't satisfy the required ^20.19.0 || >=22.12.0; installing NodeSource 22.x..."
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl ca-certificates
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash - >/dev/null
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - >/dev/null
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends nodejs
 fi
 

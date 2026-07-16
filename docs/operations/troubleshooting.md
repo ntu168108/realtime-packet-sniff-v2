@@ -7,8 +7,9 @@
 | Symptom | Root cause | Fix |
 |---------|-----------|-----|
 | `ModuleNotFoundError: No module named 'sniff-web.web_server'` | Old unit used hyphenated module name | Re-run `sudo bash sniff-web/scripts/install_web.sh` |
-| `npm: command not found` | Old script didn't install Node | Re-run installer (new version auto-installs Node 18+) |
-| `vite build` fails with "Node version too low" | Ubuntu 22.04 ships Node 12 | Re-run installer (auto-upgrades to NodeSource 20.x) |
+| `npm: command not found` | Old script didn't install Node | Re-run installer (new version auto-installs Node) |
+| `vite build` fails with "Node version too low" | Node older than the `vite@8`/`@vitejs/plugin-react@6` requirement | Re-run installer, or upgrade manually (see [Deployment §11.1](deployment.md#111-prerequisites)) |
+| `SyntaxError: ... does not provide an export named 'styleText'` | Node too old (< 20.12) for `vite@8`/rolldown, which need Node `^20.19.0 \|\| >=22.12.0` | Upgrade to Node 22 LTS (see [Deployment §11.1](deployment.md#111-prerequisites)), then `rm -rf node_modules package-lock.json && npm install && npm run build` |
 | Service starts but UI returns 404 | Frontend build skipped/failed | Re-run installer (new version verifies `dist/index.html`) |
 | `chown: invalid user: 'tu:tu'` | Hard-coded user (old bug) | Run via `sudo bash` so `$SUDO_USER` is set |
 | Login fails with `admin/sniff` | `config.yaml` has placeholder bcrypt hash, OR `web:` is indented under `capture:` in your config | Re-run installer (auto-generates) — or move `web:` to top-level in your config.yaml |

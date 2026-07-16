@@ -291,15 +291,62 @@ If the dashboard is empty, wait another minute and click **Refresh**.
 
 ### 11.1 Prerequisites
 
+> ⚠️ **Build fails on Node < 20.19:** the frontend's `vite@8` and
+> `@vitejs/plugin-react@6` both pin `"engines": { "node": "^20.19.0 ||
+> >=22.12.0" }` (confirmed via `npm view vite engines` /
+> `npm view @vitejs/plugin-react engines`, and reproduced live — Node
+> 18.19.1 installs cleanly with only an `EBADENGINE` warning, then
+> `npm run build` crashes immediately with:
+> `SyntaxError: The requested module 'node:util' does not provide an
+> export named 'styleText'` — that API doesn't exist before Node 20.12.
+> Check your version first:
+> ```bash
+> node -v
+> ```
+
 | Component | Minimum version | Reason |
 |-----------|-----------------|-------|
 | Python | 3.10+ | installed in Step 2 |
-| Node.js | **18+** (vite ≥5 needs ≥18, Ubuntu 22.04 ships 12) | build the React frontend |
-| npm | 9+ | bundled with Node 18+ |
+| Node.js | **20.19+** (or 22.12+; Node 22 LTS recommended) — `vite@8`/`@vitejs/plugin-react@6` require it, older Node crashes with the `styleText` error above | build the React frontend |
+| npm | 10+ | bundled with Node 20.19+ |
 | Free disk | 800 MB | node_modules (~500 MB) + frontend build |
 
-The new `install_web.sh` auto-installs Node.js if missing (or upgrades to
-NodeSource 20.x if apt's version is too old) and verifies the build produced
+**Upgrading Node.js**, pick one:
+
+a) **NodeSource (recommended for a server — persists across reboots):**
+
+```bash
+sudo apt-get remove -y nodejs
+sudo apt-get autoremove -y
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt-get install -y nodejs
+node -v   # confirm v22.x.x
+```
+
+b) **nvm** (if you don't want to change the system Node — note this only
+   affects the one-time build step; it has no effect once the service is
+   running, since sniff-web just serves the static build output + the
+   Python backend afterwards):
+
+```bash
+nvm install 22
+nvm use 22
+node -v
+```
+
+**If you already ran `npm install` with an old Node version**, clean up
+before rebuilding:
+
+```bash
+cd sniff-web/web
+rm -rf node_modules package-lock.json
+npm install
+npm run build
+ls -la dist/index.html   # must exist — confirms the build succeeded
+```
+
+The new `install_web.sh` auto-installs Node.js if missing (or upgrades via
+NodeSource if apt's version is too old) and verifies the build produced
 `dist/index.html`.
 
 ### 11.2 Install
