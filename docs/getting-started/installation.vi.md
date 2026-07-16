@@ -209,6 +209,15 @@ sleep 10
 > mới đúng ngữ nghĩa hơn và ClickHouse cũng ghi rõ trong docs chính thức. Ngoài ra
 > `clickhouse-server` ở Ubuntu 24.04 có hỏi password mặc định trong dialog ncurses —
 > phải đặt trước qua env var và `DEBIAN_FRONTEND=noninteractive` để cài không bị treo.
+>
+> **Lỗi đã sửa (2):** phiên bản cũ dùng `export CLICKHOUSE_PASSWORD=...` rồi gọi
+> `sudo apt-get install` ở lệnh riêng bên dưới. Cách này **không đáng tin cậy**: theo
+> mặc định `sudo` reset toàn bộ environment (`env_reset` trong `/etc/sudoers`), chỉ giữ
+> lại một whitelist nhỏ (`PATH`, `HOME`, `TERM`...) — `CLICKHOUSE_PASSWORD` không nằm
+> trong đó. Kết quả là postinst script của package chạy dưới quyền root nhưng không
+> thấy biến này, nên tạo user `default` với **password rỗng** thay vì giá trị bạn đặt,
+> và bước 4.3 sẽ fail với `Authentication failed`. Dùng `sudo env VAR=val ... command`
+> để truyền env var thẳng vào process con, không qua bước reset của sudo.
 
 ### 4.1 Cài ClickHouse qua apt
 
@@ -234,21 +243,26 @@ echo "deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg arch=${ARCH}] \
     https://packages.clickhouse.com/deb stable main" | \
     sudo tee /etc/apt/sources.list.d/clickhouse.list
 
-# Pre-set default user password để tránh dialog tương tác.
-# Đổi 'ClickHousePass' thành mật khẩu thật của bạn.
-export CLICKHOUSE_DB=default
-export CLICKHOUSE_USER=default
-export CLICKHOUSE_PASSWORD=ClickHousePass
-export CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
-
+# Cập nhật index apt trước (bước này không cần password nên chạy sudo bình thường).
 sudo apt-get update
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    -o Dpkg::Options="--force-confdef" \
-    -o Dpkg::Options="--force-confold" \
-    clickhouse-server clickhouse-client
+
+# Pre-set default user password và cài đặt — dùng `sudo env VAR=val ... command`
+# để env var truyền thẳng vào process con thay vì bị sudo's env_reset xoá mất.
+# Đổi 'ClickHousePass' thành mật khẩu thật của bạn.
+sudo env CLICKHOUSE_DB=default \
+         CLICKHOUSE_USER=default \
+         CLICKHOUSE_PASSWORD=ClickHousePass \
+         CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 \
+         DEBIAN_FRONTEND=noninteractive \
+         apt-get install -y \
+         -o Dpkg::Options="--force-confdef" \
+         -o Dpkg::Options="--force-confold" \
+         clickhouse-server clickhouse-client
 ```
 
 > - `apt-transport-https ca-certificates dirmngr gnupg` — prereqs cần thiết
+> - `sudo env VAR=val ... command` — truyền env var vào process con chạy dưới quyền
+>   root, tránh bị `sudo` xoá mất do `env_reset` (xem callout phía trên)
 > - `CLICKHOUSE_PASSWORD` — đặt password trước để postinst script không hỏi
 > - `--force-confdef --force-confold` — không hỏi khi ghi đè config cũ
 > - **Quan trọng:** key `/deb/lts/release.key` có thể trả 404 trên một số mirror —
@@ -273,6 +287,36 @@ clickhouse-client --password 'ClickHousePass' --query "SELECT version()"
 # (Tuỳ chọn) lưu password để không phải gõ lại:
 echo "CLICKHOUSE_PASSWORD=ClickHousePass" | sudo tee /etc/clickhouse-client.env
 # rồi thêm vào ~/.bashrc: alias clickhouse-client='clickhouse-client --password "$(cat /etc/clickhouse-client.env | cut -d= -f2)"'
+```
+
+### Nếu password không đúng sau khi cài
+
+Nếu bước 4.3 báo lỗi kiểu:
+
+```
+Code: 516. DB::Exception: ... Authentication failed: password is incorrect,
+or there is no user with such name
+```
+
+hoặc log cài đặt có dòng `Password for the default user is an empty string`,
+nghĩa là `CLICKHOUSE_PASSWORD` đã bị `sudo` xoá mất trong lúc cài (xem callout ở
+đầu Bước 4). Không cần purge cài lại — sửa trực tiếp file cấu hình:
+
+```bash
+# Kiểm tra và xóa file override password nếu có
+sudo ls -la /etc/clickhouse-server/users.d/
+sudo rm -f /etc/clickhouse-server/users.d/default-password.xml
+
+# Tạo password hash
+echo -n 'ClickHousePass' | sha256sum | awk '{print $1}'
+
+# Sửa /etc/clickhouse-server/users.xml, thay:
+#   <password></password>
+# thành:
+#   <password_sha256_hex>HASH_VUA_TAO</password_sha256_hex>
+
+sudo systemctl restart clickhouse-server
+clickhouse-client --password 'ClickHousePass' --query "SELECT version()"
 ```
 
 ---

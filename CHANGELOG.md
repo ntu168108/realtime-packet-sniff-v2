@@ -2,6 +2,31 @@
 
 All notable changes to `realtime-packet-sniff-v2` are documented in this file.
 
+## [Unreleased] - fix/installation-doc-clickhouse-password
+
+### Fixed
+- **`docs/getting-started/installation.md` / `installation.vi.md`, §4.1
+  ClickHouse install** — the documented command set
+  `CLICKHOUSE_PASSWORD` via `export` and then ran `sudo apt-get install`
+  as a separate command. This is unreliable: `sudo` resets the entire
+  environment by default (`env_reset` in `/etc/sudoers`), keeping only a
+  small whitelist (`PATH`, `HOME`, `TERM`, ...) that does not include
+  `CLICKHOUSE_PASSWORD`. The package's postinst script runs as root but
+  never sees the variable, so it silently creates the `default` user with
+  an **empty password** instead of the documented one — confirmed via
+  actual install log (`Password for the default user is an empty
+  string.`) — which then makes §4.3's connection check fail with `Code:
+  516 ... Authentication failed`. Replaced with
+  `sudo env VAR=val ... apt-get install ...`, which passes the env vars
+  straight into the child process without going through sudo's reset
+  step. Added a callout explaining the root cause and a new
+  "If the password is wrong after install" section right after §4.3 with
+  a non-destructive fix (remove `/etc/clickhouse-server/users.d/default-password.xml`
+  if present, set `password_sha256_hex` in `users.xml`, restart the
+  service) for anyone who already hit this with the old instructions.
+
+Verified: `mkdocs build --strict` — 0 warnings.
+
 ## [Unreleased] - fix/mkdocs-site-i18n-and-mermaid
 
 Audited the actual **built/published** docs site (`mkdocs build --strict`,

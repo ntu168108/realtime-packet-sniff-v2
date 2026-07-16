@@ -259,6 +259,17 @@ sleep 10
 > On Ubuntu 24.04 the `clickhouse-server` postinst script pops an **ncurses
 > dialog** asking for the default password — this blocks automation. We pre-set
 > `CLICKHOUSE_PASSWORD` and use `DEBIAN_FRONTEND=noninteractive`.
+>
+> **Fix from earlier version (2):** the old guide set `CLICKHOUSE_PASSWORD` with
+> `export` and then called `sudo apt-get install` as a separate command. This is
+> **not reliable**: by default `sudo` resets the entire environment
+> (`env_reset` in `/etc/sudoers`), keeping only a small whitelist (`PATH`,
+> `HOME`, `TERM`, ...) — `CLICKHOUSE_PASSWORD` isn't on it. The package's
+> postinst script runs as root but never sees the variable, so it creates the
+> `default` user with an **empty password** instead of the value you set, and
+> §4.3 fails with `Authentication failed`. Use `sudo env VAR=val ... command`
+> instead, which passes the env vars straight into the child process without
+> going through sudo's reset step.
 
 ### 4.1 Install via apt
 
@@ -282,22 +293,28 @@ echo "deb [signed-by=/usr/share/keyrings/clickhouse-keyring.gpg arch=${ARCH}] \
     https://packages.clickhouse.com/deb stable main" | \
     sudo tee /etc/apt/sources.list.d/clickhouse.list
 
-# 4. Install. CLICKHOUSE_PASSWORD stops the ncurses password prompt.
-export CLICKHOUSE_DB=default
-export CLICKHOUSE_USER=default
-export CLICKHOUSE_PASSWORD=ClickHousePass
-export CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
-
+# 4. Update the apt index first (no password needed for this step).
 sudo apt-get update
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    -o Dpkg::Options::="--force-confdef" \
-    -o Dpkg::Options="--force-confold" \
-    clickhouse-server clickhouse-client
+
+# 5. Install. `sudo env VAR=val ... command` passes the env vars straight into
+#    the child process instead of letting sudo's env_reset strip them (see
+#    callout above). Replace 'ClickHousePass' with your real password.
+sudo env CLICKHOUSE_DB=default \
+         CLICKHOUSE_USER=default \
+         CLICKHOUSE_PASSWORD=ClickHousePass \
+         CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1 \
+         DEBIAN_FRONTEND=noninteractive \
+         apt-get install -y \
+         -o Dpkg::Options="--force-confdef" \
+         -o Dpkg::Options="--force-confold" \
+         clickhouse-server clickhouse-client
 ```
 
 > - `apt-transport-https ca-certificates dirmngr gnupg` — enables apt to fetch over HTTPS
 > - `gpg --dearmor` — stores the signing key for apt's `signed-by=` directive
 > - `tee /etc/apt/sources.list.d/clickhouse.list` — registers the apt repository
+> - `sudo env VAR=val ... command` — passes env vars into the root-owned child
+>   process, avoiding sudo's `env_reset` (see callout above)
 > - `CLICKHOUSE_PASSWORD` — required to silence the interactive postinst prompt
 > - `--force-confdef --force-confold` — never prompts on config file updates
 > - `clickhouse-server` — the main database service
@@ -319,6 +336,37 @@ clickhouse-client --password 'ClickHousePass' --query "SELECT version()"
 
 # (Optional) Save the password so you don't type it again:
 echo "CLICKHOUSE_PASSWORD=ClickHousePass" | sudo tee /etc/clickhouse-client.env
+```
+
+### If the password is wrong after install
+
+If §4.3 fails with something like:
+
+```
+Code: 516. DB::Exception: ... Authentication failed: password is incorrect,
+or there is no user with such name
+```
+
+or the install log printed `Password for the default user is an empty
+string`, it means `CLICKHOUSE_PASSWORD` was stripped by `sudo` during install
+(see the callout at the top of Step 4). You don't need to purge and reinstall
+— fix the config file directly:
+
+```bash
+# Check for and remove any password override file
+sudo ls -la /etc/clickhouse-server/users.d/
+sudo rm -f /etc/clickhouse-server/users.d/default-password.xml
+
+# Generate a password hash
+echo -n 'ClickHousePass' | sha256sum | awk '{print $1}'
+
+# Edit /etc/clickhouse-server/users.xml, replacing:
+#   <password></password>
+# with:
+#   <password_sha256_hex>HASH_YOU_JUST_GENERATED</password_sha256_hex>
+
+sudo systemctl restart clickhouse-server
+clickhouse-client --password 'ClickHousePass' --query "SELECT version()"
 ```
 
 ---
