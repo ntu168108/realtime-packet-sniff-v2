@@ -1,5 +1,5 @@
 kafka-python-ng==2.2.3
-clickhouse-driver==0.2.10
+clickhouse-driver==0.2.11
 scapy==2.7.0
 pandas==2.3.3
 numpy==2.2.6
