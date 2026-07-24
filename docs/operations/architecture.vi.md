@@ -138,7 +138,11 @@ port-scan trải hàng trăm cổng; không có vế thứ hai này thì một c
 cổng vào 1 host không phân biệt được với SYN-flood và bị gán nhãn DoS hàng
 loạt), sau đó quyết định mỗi flow vật lý về **đúng 1** `predicted_class`
 theo thứ tự ưu tiên (`DoS > Exploits > Shellcode > Generic > Analysis >
-Reconnaissance > Fuzzers > Normal`). Nó ghi ra 7 CSV theo họ sao cho 1 flow chỉ
+Reconnaissance > Fuzzers > Normal`). Ngoài 7 họ UNSW-NB15 gốc còn một nhãn thứ
+tám, `Suspicious-Low-Volume`: dành cho flow *trông giống flood* nhưng chưa đủ
+bằng chứng volume để gọi là `DoS` **và** không họ nào khác nhận — tức "đáng ngờ,
+chưa kết luận", không phải `Normal` cũng không phải `DoS` đã xác nhận. Nhãn này
+chưa có biểu diễn riêng ở tầng dashboard. Nó ghi ra 7 CSV theo họ sao cho 1 flow chỉ
 mang nhãn tấn công ở **đúng 1** bảng. Cách này thay thế cho 7 filter độc lập
 trước đây (mỗi filter tự chấm điểm riêng, không có argmax) — trên traffic
 thật, cách cũ khiến DoS không bao giờ bị phát hiện và 1 flow có thể trùng khớp

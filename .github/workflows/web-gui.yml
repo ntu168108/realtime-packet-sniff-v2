@@ -35,9 +35,13 @@ jobs:
         working-directory: sniff-web
         run: pytest tests/integration_tests/ -v
       - name: Run pre-existing tests (regression check)
-        run: |
-          pytest tests/integration_tests/ -v \
-            --ignore=tests/integration_tests/test_idempotency.py
+        # test_idempotency.py trước đây bị --ignore vì hai lý do: (a) fixture của
+        # nó sinh flow volume=0 nên bị guard chống-dữ-liệu-giả của ClickHouseSink
+        # loại sạch -> test fail thật; (b) nó cần ClickHouse sống mà runner không
+        # có. (a) đã vá ở fixture; (b) giờ SKIP gọn thay vì ERROR. Nên không cần
+        # loại cả file nữa — bỏ --ignore để phần idempotency thực sự được chạy
+        # ngay khi môi trường có ClickHouse.
+        run: pytest tests/integration_tests/ -v
 
   frontend-build:
     name: Frontend (node-${{ matrix.node-version }})

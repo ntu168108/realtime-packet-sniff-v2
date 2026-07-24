@@ -119,6 +119,70 @@ python3 -c "import dos_classifier; print('OK')"
 pip install pandas numpy
 ```
 
+### ❌ A port scan is labelled `DoS` (or: a real flood is NOT labelled `DoS`)
+
+These are the two ends of one balance, tuned by two `ec-consumer` environment
+variables (`DOS_MAX_DPORT_SPREAD`, default `8`; `DOS_MIN_PKTS_FOR_RATE`,
+default `4`).
+
+**Diagnose before tuning — check whether the DoS-labelled traffic carries a scan
+signature or a flood signature:**
+
+```bash
+clickhouse-client --query "
+SELECT toStartOfMinute(ts) minute,
+       uniqExact(srcip) n_srcip,   -- spoofed flood: LARGE | scan: 1
+       uniqExact(dport) n_dport,   -- flood: 1-2           | scan: hundreds
+       round(avg(spkts),1) avg_spkts, -- scan probe: ~1     | flood: higher
+       count() n
+FROM network_ids.flows_all
+WHERE predicted_class='DoS' AND ts > now() - INTERVAL 1 HOUR
+GROUP BY minute ORDER BY minute"
+```
+
+- Hundreds of `n_dport` with `n_srcip`=1 and `avg_spkts`≈1 → **that is a port
+  scan being mislabelled**, not a flood. Lower `DOS_MAX_DPORT_SPREAD` to tighten
+  the volumetric gate. If `avg_spkts` is 1–2 and it still comes out as DoS,
+  raise `DOS_MIN_PKTS_FOR_RATE`.
+- The opposite case, **a real flood going undetected**: if your flood targets
+  several service ports at once, `DOS_MAX_DPORT_SPREAD` may be too low — **raise**
+  it. If the flood has few packets per flow, **lower** `DOS_MIN_PKTS_FOR_RATE`.
+
+> **Do not tune in one direction only.** Lowering `DOS_MAX_DPORT_SPREAD` too far
+> misses genuine multi-port floods; raising it too far puts port scans back under
+> the `DoS` label. After every change, check **both** sides: a real flood
+> (`hping3 -S --rand-source` at a single port) must still come out as `DoS`, and
+> an `nmap -sS -p 1-500` must come out as `Reconnaissance`.
+
+**Known blind spot:** a narrow scan (≤ `DOS_MAX_DPORT_SPREAD` ports) against one
+host with ≥ `DOS_MIN_FLOWS_PER_DST` flows is **still** labelled `DoS`. At the
+flow-only layer that traffic genuinely does look like a flood; separating the two
+reliably needs a signal outside the flow record.
+
+```bash
+# Apply new thresholds (add an Environment= line to the unit file, then restart)
+sudo systemctl daemon-reload && sudo systemctl restart ec-consumer
+```
+
+### ❌ An unfamiliar `Suspicious-Low-Volume` label appears in `flows_all`
+
+This is **not a fault**. It is the neutral label for a flow that *looks like* a
+flood but lacks the volume evidence to be called `DoS`, **and** that no other
+attack family claimed (if a family did claim it, the flow keeps that family
+label). It deliberately sits outside the seven original UNSW-NB15 families,
+meaning "suspicious, not concluded" — neither `Normal` nor confirmed `DoS`.
+
+The label has **no dedicated representation in the dashboard/Grafana** yet. To
+track it, query it directly:
+
+```bash
+clickhouse-client --query "
+SELECT toStartOfMinute(ts) minute, count() n
+FROM network_ids.flows_all
+WHERE predicted_class='Suspicious-Low-Volume'
+GROUP BY minute ORDER BY minute DESC LIMIT 20"
+```
+
 ### ❌ Grafana shows no data
 
 ```bash

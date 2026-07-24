@@ -2,6 +2,45 @@
 
 All notable changes to `realtime-packet-sniff-v2` are documented in this file.
 
+## [Unreleased] - fix/idempotency-test-fixture-and-dos-tuning-docs
+
+### Fixed
+- **`test_idempotency.py` fail thật, và bị `--ignore` trong CI nên không ai thấy.**
+  Fixture của nó sinh flow có **toàn bộ cột volume = 0**
+  (`spkts/dpkts/sbytes/dbytes/dur`), khớp đúng chữ ký "flow giả" mà guard
+  `_is_placeholder_row()` của `ClickHouseSink` bắt → 200/200 dòng bị loại → phép
+  đo idempotency chạy trên 0 dòng (`baseline should be 200, got 0`). **Guard là
+  đúng** (có test riêng `test_sink_rejects_placeholder_fake_flows` khoá hành vi
+  đó, và nó tồn tại để chặn một bug nạp dữ liệu mẫu đã từng xảy ra), nên đã vá
+  **fixture**, không nới guard. Hệ quả: idempotency của `ReplacingMergeTree`
+  giờ **mới thực sự được kiểm chứng** — trước đây không hề được chạy.
+- **Fixture cũ còn lệch cột âm thầm:** header 51 cột nhưng mỗi dòng chỉ cấp 49
+  giá trị, nên hai chuỗi MAC rơi vào `ct_flw_http_mthd`/`ct_ftp_cmd`, còn
+  `src_mac` nhận `''` và `dst_mac`/`predicted_class` mất hẳn. Đã chuyển sang ghi
+  theo **dict khoá theo tên cột** nên lỗi lệch cột không thể tái diễn.
+- **Docstring của `DosGuard` nói sai sau bản vá khoá.** Nó tuyên bố hot path
+  `should_keep()` "không lock", nhưng `should_keep(seq, dst=...)` gọi
+  `_note_dst()` — giờ có lấy `_counts_lock` — và đó chính là đường đi khi
+  `dos_active`, tức đúng lúc bị flood. Đã tách rõ chi phí hai đường đi.
+
+### Added
+- `test_fixture_rows_are_not_rejected_by_sink_guard` — bảo vệ chính fixture: mọi
+  dòng phải qua được guard và không lệch cột. Fail ngay tại fixture thay vì để
+  lỗi lộ ra dưới dạng "baseline should be 200, got 0".
+- Fixture `ch_client` giờ **SKIP gọn** khi không kết nối được ClickHouse (trước
+  đây chỉ `importorskip` thư viện, nên trên runner có thư viện mà không có server
+  thì ERROR). Nhờ đó **bỏ được `--ignore=test_idempotency.py` khỏi workflow
+  `Web GUI`** — phần idempotency sẽ tự động được chạy ngay khi môi trường có
+  ClickHouse, thay vì bị loại khỏi CI vĩnh viễn.
+- Mục xử lý sự cố cho **cả hai phía của cán cân nhãn DoS** (EN + VI): truy vấn
+  chẩn đoán để phân biệt chữ ký scan (`n_dport` hàng trăm, `n_srcip`=1,
+  `avg_spkts`≈1) với chữ ký flood, cách chỉnh `DOS_MAX_DPORT_SPREAD` /
+  `DOS_MIN_PKTS_FOR_RATE` theo từng hướng, cảnh báo không chỉnh một chiều, và
+  vùng mờ còn tồn tại.
+- Tài liệu cho nhãn `Suspicious-Low-Volume` (EN + VI) ở `architecture` và
+  `troubleshooting` — trước đây nhãn này **chỉ có trong CHANGELOG**, không hề
+  xuất hiện trong docs site dù nó đã có mặt trong dữ liệu sản xuất.
+
 ## [Unreleased] - fix/ci-red-docs-strict-and-dosguard-race-on-py310
 
 Hai workflow đang báo đỏ trên `main` (`Docs`, `Web GUI`). Vá cả hai.

@@ -140,7 +140,12 @@ second condition a 500-port scan of one host is indistinguishable from a
 SYN-flood and gets mislabelled `DoS` en masse), then resolves each physical flow
 to a **single** `predicted_class`
 by priority (`DoS > Exploits > Shellcode > Generic > Analysis > Reconnaissance >
-Fuzzers > Normal`). It writes the seven per-family CSVs so that a flow carries its
+Fuzzers > Normal`). Beyond the seven original UNSW-NB15 families there is an
+eighth label, `Suspicious-Low-Volume`, for a flow that *looks like* a flood but
+lacks the volume evidence to be called `DoS` **and** that no other family
+claimed — "suspicious, not concluded", neither `Normal` nor confirmed `DoS`. It
+has no dedicated dashboard representation yet.
+It writes the seven per-family CSVs so that a flow carries its
 attack label in **exactly one** table. This replaced seven independent filters that
 scored each family in isolation (no argmax), which on real traffic left DoS
 undetected and made one flow match several families at once (7× duplication in

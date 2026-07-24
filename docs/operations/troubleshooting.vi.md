@@ -83,6 +83,67 @@ python3 -c "import dos_classifier; print('OK')"
 # Nếu lỗi pandas: pip install pandas numpy
 ```
 
+### ❌ Port-scan bị gán nhãn `DoS` (hoặc: flood thật KHÔNG ra nhãn `DoS`)
+
+Hai lỗi này là hai đầu của cùng một cán cân, điều chỉnh bằng hai biến môi
+trường của `ec-consumer` (xem bảng ở [Triển khai §11.3](deployment.vi.md)).
+
+**Chẩn đoán trước khi chỉnh — xem lưu lượng bị gán DoS có chữ ký của scan hay
+của flood:**
+
+```bash
+clickhouse-client --query "
+SELECT toStartOfMinute(ts) phut,
+       uniqExact(srcip) so_srcip,   -- flood spoofed: LỚN | scan: 1
+       uniqExact(dport) so_dport,   -- flood: 1-2      | scan: hàng trăm
+       round(avg(spkts),1) spkts_tb,-- probe scan: ~1  | flood: cao hơn
+       count() n
+FROM network_ids.flows_all
+WHERE predicted_class='DoS' AND ts > now() - INTERVAL 1 HOUR
+GROUP BY phut ORDER BY phut"
+```
+
+- `so_dport` hàng trăm + `so_srcip`=1 + `spkts_tb`≈1 → **đó là port-scan bị gán
+  sai**, không phải flood. Giảm `DOS_MAX_DPORT_SPREAD` (mặc định `8`) để cổng
+  volumetric siết chặt hơn. Nếu `spkts_tb` ≈ 1–2 mà vẫn ra DoS thì tăng
+  `DOS_MIN_PKTS_FOR_RATE` (mặc định `4`).
+- Ngược lại, **flood thật không được phát hiện**: nếu flood của bạn nhắm nhiều
+  cổng dịch vụ cùng lúc, `DOS_MAX_DPORT_SPREAD` có thể đang quá thấp — **tăng**
+  nó. Nếu flood có ít gói mỗi flow, **giảm** `DOS_MIN_PKTS_FOR_RATE`.
+
+> **Đừng chỉnh một chiều.** Hạ `DOS_MAX_DPORT_SPREAD` quá tay sẽ bỏ lọt flood đa
+> cổng thật; nâng quá tay sẽ đưa port-scan trở lại nhãn DoS. Sau mỗi lần chỉnh,
+> kiểm tra CẢ HAI phía: phát một flood thật (`hping3 -S --rand-source` tới 1
+> cổng) phải vẫn ra `DoS`, và một `nmap -sS -p 1-500` phải ra `Reconnaissance`.
+
+**Vùng mờ còn tồn tại:** scan hẹp (≤ `DOS_MAX_DPORT_SPREAD` cổng) vào 1 host với
+≥ `DOS_MIN_FLOWS_PER_DST` flow **vẫn** bị gán `DoS`. Ở tầng flow-only, lưu lượng
+đó thống kê *đúng là* giống flood; phân biệt triệt để cần tín hiệu ngoài flow.
+
+```bash
+# Áp ngưỡng mới (thêm dòng Environment= vào unit file rồi restart)
+sudo systemctl daemon-reload && sudo systemctl restart ec-consumer
+```
+
+### ❌ Xuất hiện nhãn lạ `Suspicious-Low-Volume` trong `flows_all`
+
+Đây **không phải lỗi**. Đó là nhãn trung tính cho flow *trông giống flood* nhưng
+chưa đủ bằng chứng volume để gọi là `DoS`, **và** không họ tấn công nào khác nhận
+(nếu có họ nhận thì flow giữ nhãn họ đó). Nó cố ý không nằm trong 7 họ UNSW-NB15
+gốc — nghĩa là "đáng ngờ, chưa kết luận", không phải `Normal`, cũng không phải
+`DoS` đã xác nhận.
+
+Nhãn này **chưa có biểu diễn riêng ở dashboard/Grafana** — nếu bạn cần theo dõi
+nó thì truy vấn trực tiếp:
+
+```bash
+clickhouse-client --query "
+SELECT toStartOfMinute(ts) phut, count() n
+FROM network_ids.flows_all
+WHERE predicted_class='Suspicious-Low-Volume'
+GROUP BY phut ORDER BY phut DESC LIMIT 20"
+```
+
 ### ❌ Grafana không thấy dữ liệu
 
 ```bash

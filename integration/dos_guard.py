@@ -32,8 +32,18 @@ class DosGuard:
     """Phát hiện flood bằng pps và cắt tải bằng lấy mẫu 1/N.
 
     Trạng thái được cập nhật ở tần suất thấp (1Hz) qua `update(pps)`; quyết
-    định giữ/bỏ mỗi gói ở hot path qua `should_keep(seq)` chỉ tốn 1 phép chia
-    dư — không lock, an toàn đọc đồng thời dưới GIL.
+    định giữ/bỏ mỗi gói ở hot path qua `should_keep(seq)`.
+
+    Chi phí của hot path:
+      * `should_keep(seq)` (dst=None — đường đi bình thường khi KHÔNG bị flood):
+        chỉ 1 phép chia dư, không lock, an toàn đọc đồng thời dưới GIL.
+      * `should_keep(seq, dst=...)` (producer chỉ truyền dst khi `dos_active`):
+        thêm 1 lần lấy `_counts_lock` cho `_note_dst()`. Khoá này là BẮT BUỘC —
+        không có nó, luồng giám sát 1Hz và luồng bắt gói đua nhau trên
+        `_dst_counts` và ném `RuntimeError: dictionary changed size during
+        iteration` (xem ghi chú ở `_note_dst`). Vùng khoá chỉ bao một phép tăng
+        counter, và luồng giám sát chỉ giữ khoá đủ để hoán đổi một tham chiếu,
+        nên tranh chấp không đáng kể.
     """
 
     def __init__(
