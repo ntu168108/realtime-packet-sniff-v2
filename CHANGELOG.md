@@ -2,7 +2,62 @@
 
 All notable changes to `realtime-packet-sniff-v2` are documented in this file.
 
-## [Unreleased] - fix/npm-security-advisories-sniff-web
+## [v2.0.0] - 2026-07-24
+
+Bản phát hành lớn đầu tiên kể từ `v1.1.0` (2026-07-06) — gom **53 commit**. Gọi
+là major vì lõi phân loại đã được **viết lại** chứ không chỉ tinh chỉnh: kiến
+trúc 7 filter họ tấn công độc lập (mỗi filter tự chấm điểm, không argmax, khiến
+1 flow vật lý mang nhiều nhãn và bị đếm tới 7 lần trong `flows_all`) đã được
+thay bằng `unified_classifier` — **đúng 1 nhãn cho mỗi flow**.
+
+Chi tiết đầy đủ của từng nhánh nằm ở các mục `v2.0.0 · <nhánh>` bên dưới.
+
+### Điểm chính
+
+**Độ chính xác phân loại (nhóm thay đổi lớn nhất)**
+- `unified_classifier` thay 7 filter độc lập: 1 flow → 1 `predicted_class`, quyết
+  theo điểm + thứ tự ưu tiên. Chấm dứt việc 1 flow bị đếm 7 lần.
+- Bắt được DoS mà kiến trúc cũ **bỏ lọt 100%**: ngưỡng UNSW-NB15 gốc
+  (`sttl>=142.5`, `rate>=112k`) không bao giờ chạm được với flood thật bị Argus
+  gộp thành flow 1 gói.
+- **Phân biệt port-scan với SYN-flood** ở cổng volumetric
+  (`DOS_MAX_DPORT_SPREAD`) và chặn `rate` giả trên flow đơn gói
+  (`DOS_MIN_PKTS_FOR_RATE`). Đo trên dữ liệu sản xuất thật: **1748 nhãn `DoS`
+  sai → 0**, không flow nào mới thành `DoS`.
+- Thêm nhãn thứ tám `Suspicious-Low-Volume` cho flow flood-like chưa đủ bằng
+  chứng volume mà không họ nào nhận.
+- Loại nhiều nguồn false-positive trên traffic thật: khung L2 (ARP/STP/LLC),
+  hạ tầng LAN benign (multicast/mDNS/SSDP/DHCP/NTP), đích ở xa.
+
+**Tự vệ ở tầng capture**
+- `DosGuard`: phát hiện flood bằng pps ngay tại capture và cắt tải bằng lấy mẫu
+  1/N, kèm backpressure thích ứng và cắt tải **có chọn lọc theo đích nóng** —
+  chặn OOM cả host trước khi kịp phân loại.
+
+**Web GUI (`sniff-web`)**
+- Đại tu giao diện, trang Capture/ClickHouse/Kafka/Services/Config, bảng gói
+  ảo hoá, hiển thị MAC, biểu đồ họ tấn công.
+
+**Độ tin cậy / bảo mật**
+- Vá race condition trong `DosGuard` (lỗi này từng được tuyên bố đã vá nhưng
+  chưa — chỉ tái tạo được trên Python 3.10).
+- Vá idempotency của `ReplacingMergeTree` khỏi bị "kiểm chứng" trên 0 dòng.
+- Vá 4 advisory npm trong `sniff-web` (`postcss` high; `react-router` /
+  `react-router-dom` medium) — `react-router` lên v7, bỏ `react-router-dom`.
+- Sửa nhiều lỗi triển khai thật: password ClickHouse bị `sudo env_reset` bỏ
+  rơi, `kafka.service` `User=`, yêu cầu Node của sniff-web, i18n docs site.
+
+### Còn tồn đọng (không coi là đã giải quyết)
+- Scan hẹp (≤ `DOS_MAX_DPORT_SPREAD` cổng) vào 1 host vẫn bị gán `DoS` — vùng
+  chồng lấn thật ở tầng flow-only.
+- Không có DPI/TLS: Exploits/SQLi qua HTTPS chỉ suy luận từ hình dạng luồng.
+- Nhãn `Suspicious-Low-Volume` chưa có biểu diễn riêng ở dashboard.
+- 1 advisory `react-router` (RSC mode) chưa vá vì bản vá cần React 19.
+- Các số version trong code chưa đồng bộ với tag: `setup.py` `0.2.0`,
+  `cli/helpers.py` `0.2.0`, `web_server.py` `0.3.0`,
+  `sniff-web/web/package.json` `0.1.0`.
+
+## v2.0.0 · fix/npm-security-advisories-sniff-web
 
 Vá 4 Dependabot alert đang mở trên `sniff-web/web` (1 high + 3 medium). Job
 Dependabot cho `react-router` **fail** nên nó không tự tạo được PR — phải vá tay.
@@ -51,7 +106,7 @@ trang và bundle sau khi restart.
   Dấu vết của một lần build chạy bằng `sudo`. Đã `chown -R tu:tu dist`. Đây là
   lỗi trạng thái máy triển khai, không phải lỗi code trong repo.
 
-## [Unreleased] - fix/idempotency-test-fixture-and-dos-tuning-docs
+## v2.0.0 · fix/idempotency-test-fixture-and-dos-tuning-docs
 
 ### Fixed
 - **`test_idempotency.py` fail thật, và bị `--ignore` trong CI nên không ai thấy.**
@@ -90,7 +145,7 @@ trang và bundle sau khi restart.
   `troubleshooting` — trước đây nhãn này **chỉ có trong CHANGELOG**, không hề
   xuất hiện trong docs site dù nó đã có mặt trong dữ liệu sản xuất.
 
-## [Unreleased] - fix/ci-red-docs-strict-and-dosguard-race-on-py310
+## v2.0.0 · fix/ci-red-docs-strict-and-dosguard-race-on-py310
 
 Hai workflow đang báo đỏ trên `main` (`Docs`, `Web GUI`). Vá cả hai.
 
@@ -129,7 +184,7 @@ Hai workflow đang báo đỏ trên `main` (`Docs`, `Web GUI`). Vá cả hai.
   lỗi trên mọi phiên bản — đã kiểm chứng bằng cách tạm bỏ khoá: test đỏ đúng
   như mong đợi, khôi phục khoá thì xanh.
 
-## [Unreleased] - fix/scan-vs-flood-misclassification
+## v2.0.0 · fix/scan-vs-flood-misclassification
 
 Vá lỗi phân loại sai lớn nhất mà báo cáo thực nghiệm
 [`docs/reports/2026-07-17-phan-loai-sai-3-kich-ban.md`](docs/reports/2026-07-17-phan-loai-sai-3-kich-ban.md)
@@ -216,7 +271,7 @@ sai, Exp2: 995/1015 luồng sai).
   `dos_reason` mà báo cáo đề xuất để tách nguồn gốc nhãn DoS
   (`dst_pressure` vs `high_rate`) — cả hai là hạng mục riêng, lớn hơn một PR.
 
-## [Unreleased] - fix/dosguard-race-and-classifier-gating-edge-cases
+## v2.0.0 · fix/dosguard-race-and-classifier-gating-edge-cases
 
 Tự triển khai thực nghiệm rà soát repo (gọi trực tiếp `DosGuard` và
 `unified_classifier.classify_segment()` giống cách `run_producer.py` gọi
@@ -259,7 +314,7 @@ biên ngưỡng.
 Chi tiết đầy đủ (thực nghiệm tái tạo, plan khắc phục dài hạn, giới hạn của
 thực nghiệm) xem báo cáo đính kèm phiên làm việc (không nằm trong repo này).
 
-## [Unreleased] - fix/sniff-web-node-version-requirement
+## v2.0.0 · fix/sniff-web-node-version-requirement
 
 Reproduced live: installing Node 18.19.1 per the old docs, `install_web.sh`
 ran `npm install` clean (only an `EBADENGINE` warning), then `npm run build`
@@ -297,7 +352,7 @@ Verified: `mkdocs build --strict` (0 warnings); `bash -n install_web.sh`
 boundary cases (18.x, 19.x, 20.0–20.18, 21.x correctly rejected; 20.19+,
 22.12+, 23+ correctly accepted).
 
-## [Unreleased] - fix/installation-doc-clickhouse-password
+## v2.0.0 · fix/installation-doc-clickhouse-password
 
 ### Fixed
 - **`docs/getting-started/installation.md` / `installation.vi.md`, §4.1
@@ -322,7 +377,7 @@ boundary cases (18.x, 19.x, 20.0–20.18, 21.x correctly rejected; 20.19+,
 
 Verified: `mkdocs build --strict` — 0 warnings.
 
-## [Unreleased] - fix/mkdocs-site-i18n-and-mermaid
+## v2.0.0 · fix/mkdocs-site-i18n-and-mermaid
 
 Audited the actual **built/published** docs site (`mkdocs build --strict`,
 not just the raw markdown source) since that's what users read on GitHub
@@ -368,7 +423,7 @@ anchor mismatch — that `--strict` doesn't fail on but are real content
 bugs); manually inspected the built HTML for both languages to confirm
 the mermaid class, the Vietnamese page bodies, and the fixed anchor.
 
-## [Unreleased] - fix/capture-table-mac-position-and-ipv6-overflow
+## v2.0.0 · fix/capture-table-mac-position-and-ipv6-overflow
 
 ### Fixed
 - **Capture page packet table: MAC address line landed in the wrong spot /
@@ -404,7 +459,7 @@ reasoned through both a 39-char IPv6 literal and a MAC-bearing row to
 confirm the fixed-width/fixed-height assumptions that caused the overlap
 are gone.
 
-## [Unreleased] - fix/deployment-docs-new-machine-audit
+## v2.0.0 · fix/deployment-docs-new-machine-audit
 
 ### Fixed
 - **`deploy/systemd/kafka.service` would fail to start on any fresh machine
@@ -438,7 +493,7 @@ Found by auditing "set this project up on a brand-new machine from the docs
 alone" end to end and diffing every doc claim (unit files, package tables,
 test counts, version banners) against the actual tracked files.
 
-## [Unreleased] - fix/ec-stale-docs-windows-cleanup-and-merge-order
+## v2.0.0 · fix/ec-stale-docs-windows-cleanup-and-merge-order
 
 ### Fixed
 - **`MODULE_PHANLOAI/tests/integration/test_wrapper_end_to_end.py`** — 5 of
@@ -481,7 +536,7 @@ Verified end-to-end on a real capture: ran `extractor.py` +
 same row count (3,793) and same 40/50-column NB15 schema as before these
 changes, with no `zeek_ts`/`_occ` columns leaking into the output CSV.
 
-## [Unreleased] - feat/web-ui-overhaul-2026-07-14
+## v2.0.0 · feat/web-ui-overhaul-2026-07-14
 
 Dashboard/Capture UI overhaul in one push. Full detail (rationale, gotchas,
 "don't re-add this" notes) lives in `sniff-web/docs/WEB_GUI.md`; this entry
@@ -530,7 +585,7 @@ is the flat summary. All 0 new npm/pip dependencies throughout.
 - An ambient scanline/vignette full-page overlay, added then removed same
   day after it read as visually cluttered.
 
-## [Unreleased] - fix/capture-page-filter-autoscroll
+## v2.0.0 · fix/capture-page-filter-autoscroll
 
 ### Fixed
 - **Web UI: search filter and auto-scroll toggle on the Capture page now work.**
@@ -540,7 +595,7 @@ is the flat summary. All 0 new npm/pip dependencies throughout.
   search box or toggling auto-scroll had no visible effect. Replaced with real
   `useState` (`tableFilter`, `autoScroll`) wired to the component's props.
 
-## [Unreleased] - feat/dosguard-adaptive-backpressure
+## v2.0.0 · feat/dosguard-adaptive-backpressure
 
 ### Added
 - **DosGuard backpressure mode (NIC-agnostic self-protection).** The capture-side
@@ -569,7 +624,7 @@ is the flat summary. All 0 new npm/pip dependencies throughout.
 - Full-packet capture on this Python/Scapy path is not intended for sustained
   10G/100G; see `docs/operations/architecture.md` (Adaptive DoS self-protection).
 
-## [Unreleased] - fix/classification-accuracy-real-traffic
+## v2.0.0 · fix/classification-accuracy-real-traffic
 
 Xác thực bằng thực nghiệm tấn công thật (Kali `192.168.106.60` → Ubuntu VM
 `192.168.101.135`, 11 họ: baseline/DoS×4/Exploits/Fuzzers/Generic/Analysis/
@@ -626,7 +681,7 @@ thu thập (Argus/Zeek) hoạt động đúng, nhưng **tầng phân loại sai 
   thật (flood 1-gói→DoS, mDNS/SSDP→Normal, HTTPS ngoài→Normal, exploit nội bộ→
   Exploits, L2→Normal, single-label, FP thấp).
 
-## [Unreleased] - fix/ec-pipeline-real-data-bugs
+## v2.0.0 · fix/ec-pipeline-real-data-bugs
 
 ### Fixed
 - **Extract+Classify stage never produced real flow data — every segment
@@ -675,7 +730,7 @@ Verified end-to-end on a live deployment: captured real traffic → Kafka →
 Argus/Zeek → 7 family filters → DoS classifier → ClickHouse now shows real,
 non-sample flow rows with populated `predicted_class` for every new segment.
 
-## [Unreleased] - fix/flow-gia-va-mat-goi
+## v2.0.0 · fix/flow-gia-va-mat-goi
 
 ### Fixed
 - **Flow giả trong ClickHouse** — trước đây mọi flow là dữ liệu mẫu synthetic
