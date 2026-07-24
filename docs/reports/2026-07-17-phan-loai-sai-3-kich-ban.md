@@ -272,3 +272,7 @@ Test suite gốc `tests/`: 52 pass, 1 fail — fail này **đã có sẵn** ở 
   tầng hiển thị. Ghi vào backlog.
 - **Nhãn `Suspicious-Low-Volume` vẫn chưa có biểu diễn riêng ở dashboard**
   (tồn đọng từ bản vá `fix/dosguard-race-and-classifier-gating-edge-cases`).
+- **Lỗi ở tầng CAPTURE, ngoài phạm vi bản vá này:** `DosGuard` bị đói CPU dưới
+  flood tốc độ rất cao do Scapy dissect chiếm GIL, nên van cắt tải có thể phản
+  ứng chậm hơn mức cần. Bản vá ở mục 8 thuần tầng phân loại nên **không** cải
+  thiện điểm này. Ghi nhận riêng để không bị coi là đã xử lý.

@@ -270,6 +270,12 @@ sai, Exp2: 995/1015 luồng sai).
   SQLi chỉ suy luận gián tiếp từ hình dạng luồng) và cũng chưa thêm cột
   `dos_reason` mà báo cáo đề xuất để tách nguồn gốc nhãn DoS
   (`dst_pressure` vs `high_rate`) — cả hai là hạng mục riêng, lớn hơn một PR.
+- **Không liên quan và chưa vá — lỗi ở TẦNG CAPTURE, không phải tầng phân loại:**
+  `DosGuard` bị đói CPU dưới flood tốc độ rất cao vì Scapy dissect chiếm GIL, nên
+  van cắt tải có thể phản ứng chậm hơn mức cần. Bản vá này thuần tầng phân loại
+  và **không** cải thiện điểm đó. (Đặc tả gốc dẫn tới một ghi chú
+  `critical_defect_capture_blindspot.md`; tài liệu đó **không có trong repo** —
+  nếu còn giữ ở đâu thì nên đưa vào `docs/reports/` để không mất dấu.)
 
 ## v2.0.0 · fix/dosguard-race-and-classifier-gating-edge-cases
 
