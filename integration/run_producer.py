@@ -231,7 +231,13 @@ def main():
                     seg_logger.info("DoS cleared pps=%.0f, thu day lai (1/1)", pps)
                 was_active = active
             except Exception as exc:
-                logging.debug("dos_guard_loop: %s", exc)
+                # Nâng từ debug lên warning kèm traceback: một exception ở đây
+                # (vd race condition trong DosGuard._update_hot_victim, đã vá
+                # nhưng để phòng lỗi tương tự trong tương lai) trước đây bị
+                # nuốt âm thầm ở mức debug -- production log thường chạy ở
+                # INFO trở lên nên không ai biết guard đã crash 1 vòng cập
+                # nhật, ngay lúc hệ thống cần dữ liệu DoS chính xác nhất.
+                logging.warning("dos_guard_loop: %s", exc, exc_info=True)
             time.sleep(1.0)
 
     threading.Thread(target=_dos_guard_loop, daemon=True, name="dos-guard").start()

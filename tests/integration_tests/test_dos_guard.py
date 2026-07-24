@@ -155,3 +155,65 @@ def test_ipv4_dst_handles_vlan_tag():
     ip[16:20] = bytes([10, 0, 0, 9])
     frame = eth + bytes(ip)
     assert _ipv4_dst(frame) == bytes([10, 0, 0, 9])
+
+
+def test_no_race_between_capture_thread_and_monitor_thread():
+    """Regression test cho race condition thật đã tái tạo bằng thực nghiệm:
+
+    should_keep(dst=...) (gọi từ luồng bắt gói qua _note_dst) và
+    update()->_update_hot_victim() (gọi từ luồng giám sát 1Hz) cùng thao tác
+    trên self._dst_counts. Bản vá cũ lặp trực tiếp trên dict đang sống rồi
+    reset ở cuối -> nếu luồng bắt gói ghi thêm key mới đúng lúc luồng giám
+    sát đang giữa vòng lặp .items(), Python ném
+    `RuntimeError: dictionary changed size during iteration`.
+
+    Test này ép mở rộng cửa sổ race bằng sys.setswitchinterval() cực thấp
+    (kỹ thuật stress-test chuẩn cho race condition dưới GIL, không tạo lỗi
+    giả) để lỗi hiếm gặp này biểu hiện đáng tin cậy trong CI thay vì chỉ
+    thỉnh thoảng xuất hiện khi vận hành thật.
+    """
+    import sys
+    import threading
+    import time
+
+    old_interval = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)
+    try:
+        g = _fresh(backpressure=True, victim_share=0.5, victim_min_pps=1_000)
+        g.dos_active = True
+        errors = []
+        stop = threading.Event()
+
+        def capture_thread(idx):
+            i = 0
+            try:
+                while not stop.is_set():
+                    dst = f"10.{idx}.{(i >> 8) & 255}.{i & 255}".encode()
+                    g.should_keep(i, dst=dst)
+                    i += 1
+            except Exception as e:  # noqa: BLE001
+                errors.append((f"capture_thread_{idx}", repr(e)))
+
+        def monitor_thread():
+            try:
+                while not stop.is_set():
+                    g.update(80_000, kernel_drops=0, queue_drops=0,
+                              qsize=40_000, qcap=65_536)
+            except Exception as e:  # noqa: BLE001
+                errors.append(("monitor_thread", repr(e)))
+
+        threads = [threading.Thread(target=capture_thread, args=(i,))
+                   for i in range(6)]
+        mt = threading.Thread(target=monitor_thread)
+        for t in threads:
+            t.start()
+        mt.start()
+        time.sleep(3.0)
+        stop.set()
+        for t in threads:
+            t.join(timeout=2)
+        mt.join(timeout=2)
+
+        assert errors == [], f"Race condition reproduced: {errors}"
+    finally:
+        sys.setswitchinterval(old_interval)

@@ -2,6 +2,49 @@
 
 All notable changes to `realtime-packet-sniff-v2` are documented in this file.
 
+## [Unreleased] - fix/dosguard-race-and-classifier-gating-edge-cases
+
+Tự triển khai thực nghiệm rà soát repo (gọi trực tiếp `DosGuard` và
+`unified_classifier.classify_segment()` giống cách `run_producer.py` gọi
+chúng trong sản xuất, do sandbox không có `CAP_NET_RAW` để phát lại traffic
+thật). Tìm và vá được 2 lỗi tái tạo bằng thực nghiệm + 1 lỗ hổng thiết kế ở
+biên ngưỡng.
+
+### Fixed
+- **Race condition trong `DosGuard._update_hot_victim()`** (`integration/dos_guard.py`):
+  luồng giám sát 1Hz lặp trực tiếp trên `self._dst_counts` trong khi luồng bắt
+  gói (`should_keep()` → `_note_dst()`) ghi thêm key mới vào cùng dict không
+  khóa → `RuntimeError: dictionary changed size during iteration`. Tái tạo
+  được bằng stress test (6 luồng bắt gói + 1 luồng giám sát, ép
+  `sys.setswitchinterval(1e-6)` để mở rộng cửa sổ race). Vá bằng cách hoán đổi
+  dict ra ngoài (atomically dưới GIL) trước khi lặp, thay vì lặp trên dict
+  đang sống rồi reset ở cuối. Thêm test hồi quy
+  `test_no_race_between_capture_thread_and_monitor_thread` vào
+  `tests/integration_tests/test_dos_guard.py`. Nâng log exception trong
+  `_dos_guard_loop` (`integration/run_producer.py`) từ `debug` lên `warning`
+  kèm traceback — trước đây bị nuốt âm thầm ở mức không ai xem trong production.
+- **Heuristic `.255` loại nhầm victim hợp lệ khỏi toàn bộ phân loại**
+  (`Extraction-and-classification/MODULE_PHANLOAI/unified_classifier.py`):
+  `_multicast_broadcast_dst_mask()`/`_benign_infra_mask()` coi mọi IP kết
+  thúc `.255` là broadcast /24 — sai với mạng lớn hơn /24 (VLSM /23+, nơi
+  `.255` là host hợp lệ). Thực nghiệm: SYN-flood 60-flow giống hệt nhau, đổi
+  victim từ `.135` sang `.255` khiến kết quả từ `DoS×60` thành `Normal×60`
+  (bỏ lọt 100%). Thêm biến môi trường `LAN_CIDRS` (CSV các CIDR mạng LAN thật)
+  để tính broadcast address CHÍNH XÁC theo subnet mask (`ipaddress` module)
+  thay vì suy đoán octet cuối; không cấu hình `LAN_CIDRS` → không áp mask này
+  nữa (an toàn hơn mặc định: sót vài gói broadcast /24 còn hơn loại nhầm
+  victim /23+).
+- **Ngưỡng cứng `DOS_MIN_FLOWS_PER_DST=40` gây gán nhầm họ thay vì bỏ lọt
+  trung tính** (`_detect_dos()`/`classify_segment()`): SYN-flood dưới ngưỡng
+  volumetric (39 flow) không rớt về `Normal` mà bị gán nhầm `Reconnaissance`
+  vì đặc trưng 1-gói khớp gần hết chữ ký recon. Thực nghiệm: 39 flow →
+  `Reconnaissance` (sai), 40 flow → `DoS` (đúng). Thêm nhãn trung tính mới
+  `Suspicious-Low-Volume` cho flow flood-like chưa qua cổng volumetric, thay
+  vì để rơi tự do vào vòng chấm điểm 6 họ.
+
+Chi tiết đầy đủ (thực nghiệm tái tạo, plan khắc phục dài hạn, giới hạn của
+thực nghiệm) xem báo cáo đính kèm phiên làm việc (không nằm trong repo này).
+
 ## [Unreleased] - fix/sniff-web-node-version-requirement
 
 Reproduced live: installing Node 18.19.1 per the old docs, `install_web.sh`

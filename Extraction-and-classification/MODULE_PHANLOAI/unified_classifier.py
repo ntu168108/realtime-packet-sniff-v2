@@ -35,6 +35,7 @@ hoặc chạy CLI để xuất 1 CSV đã phân loại.
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import logging
 import os
 import sys
@@ -68,6 +69,39 @@ DOS_MIN_FLOWS_PER_DST = int(os.environ.get("DOS_MIN_FLOWS_PER_DST", "40"))
 # thân nó đã có tốc độ rất cao (nhiều gói/giây trong cùng flow) → là flood ngay
 # cả khi chỉ có 1 dòng. Áp cho traffic KHÔNG bị --rand-source băm nhỏ.
 DOS_HIGH_RATE = float(os.environ.get("DOS_HIGH_RATE", "5000"))
+
+# FIX (lỗi #2 — heuristic ".255" loại nhầm victim hợp lệ trên mạng > /24):
+# Danh sách CIDR của (các) mạng LAN thật đang giám sát, phân tách bởi dấu
+# phẩy (vd "192.168.100.0/23,10.0.0.0/24"). Khi được cấu hình, địa chỉ
+# broadcast được tính CHÍNH XÁC theo subnet mask thật (ipaddress.broadcast_address)
+# thay vì suy đoán "kết thúc bằng .255 => broadcast /24" — suy đoán đó sai với
+# bất kỳ mạng nào lớn hơn /24 (VD /23: .255 là host hợp lệ, không phải broadcast)
+# và đã được thực nghiệm xác nhận gây bỏ lọt 100% một SYN-flood có victim IP
+# kết thúc .255 (xem defect_test_and_remediation.md).
+# Để trống (mặc định) => KHÔNG áp heuristic .255 nữa (an toàn hơn: chấp nhận có
+# thể sót một vài gói broadcast /24 thật còn hơn loại nhầm victim /23+).
+_LAN_CIDRS_RAW = os.environ.get("LAN_CIDRS", "").strip()
+try:
+    LAN_NETWORKS = [ipaddress.ip_network(c.strip(), strict=False)
+                    for c in _LAN_CIDRS_RAW.split(",") if c.strip()]
+except ValueError:
+    logger.warning("LAN_CIDRS không hợp lệ (%r) — bỏ qua, không áp broadcast mask theo subnet.",
+                    _LAN_CIDRS_RAW)
+    LAN_NETWORKS = []
+
+
+def _configured_broadcast_mask(ip_series: pd.Series) -> np.ndarray:
+    """True khi địa chỉ khớp broadcast address của một trong các LAN_NETWORKS
+    đã cấu hình (tính đúng theo subnet mask thật). Trả về mảng toàn False khi
+    LAN_NETWORKS rỗng (không suy đoán octet cuối nữa — xem ghi chú ở LAN_CIDRS)."""
+    n = len(ip_series)
+    if not LAN_NETWORKS:
+        return np.zeros(n, dtype=bool)
+    broadcast_strs = {str(net.broadcast_address) for net in LAN_NETWORKS
+                       if net.version == 4}
+    if not broadcast_strs:
+        return np.zeros(n, dtype=bool)
+    return ip_series.isin(broadcast_strs).to_numpy(bool)
 
 # Mô hình mối đe doạ: IDS giám sát host trên MẠNG NỘI BỘ; kẻ tấn công và victim
 # ở gần nhau (ít hop). dttl là TTL còn lại của gói PHẢN HỒI từ đích — đích nội bộ
@@ -131,7 +165,14 @@ def _multicast_broadcast_dst_mask(df: pd.DataFrame) -> np.ndarray:
     m |= s.str.match(r"^(22[4-9]|23[0-9])\.").fillna(False).to_numpy(bool)  # IPv4 multicast
     m |= s.str.startswith("ff").to_numpy(bool)                              # IPv6 multicast
     m |= (s == "255.255.255.255").to_numpy(bool)                           # broadcast toàn mạng
-    m |= s.str.endswith(".255").to_numpy(bool)                             # broadcast /24 (heuristic)
+    # FIX (lỗi #2): thay suy đoán "endswith .255 => broadcast /24" bằng broadcast
+    # address tính đúng theo subnet thật (LAN_CIDRS). Suy đoán cũ sai trên mạng
+    # lớn hơn /24 (vd /23: .255 là HOST hợp lệ) và đã gây bỏ lọt 100% một
+    # SYN-flood có victim IP kết thúc .255 trong thực nghiệm tái tạo — xem
+    # defect_test_and_remediation.md. Không cấu hình LAN_CIDRS => không áp mask
+    # này (an toàn hơn: chấp nhận sót vài gói broadcast /24 còn hơn loại nhầm
+    # victim /23+ khỏi toàn bộ phân loại).
+    m |= _configured_broadcast_mask(s)
     return m
 
 
@@ -155,8 +196,12 @@ def _benign_infra_mask(df: pd.DataFrame) -> np.ndarray:
             mask |= (s == "255.255.255.255").to_numpy(bool)                              # broadcast
             mask |= (s == "0.0.0.0").to_numpy(bool)                                      # DHCP discover
     if "dstip" in df.columns:
-        # broadcast .255 cuối (heuristic /24)
-        mask |= df["dstip"].astype(str).str.endswith(".255").to_numpy(bool)
+        # FIX (lỗi #2): xem ghi chú tương ứng trong _multicast_broadcast_dst_mask
+        # ở trên — thay suy đoán .255/24 bằng broadcast address theo LAN_CIDRS
+        # thật đã cấu hình.
+        mask |= _configured_broadcast_mask(
+            df["dstip"].astype(str).str.strip().str.lower()
+        )
     for pcol in ("dport", "sport"):
         if pcol in df.columns:
             p = pd.to_numeric(df[pcol], errors="coerce").fillna(-1).astype(int)
@@ -202,8 +247,10 @@ def _family_scores(df: pd.DataFrame, class_name: str,
 # ---------------------------------------------------------------------------
 # Phát hiện DoS: điểm cộng dồn per-flow + cổng volumetric cấp segment
 # ---------------------------------------------------------------------------
-def _detect_dos(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
-    """Trả về (is_dos: bool[n], subtype: object[n]).
+def _detect_dos(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Trả về (is_dos: bool[n], subtype: object[n], dos_score: int64[n],
+    flood_like_ungated: bool[n] — flood-like nhưng chưa qua cổng volumetric,
+    xem FIX lỗ hổng #3 ở cuối hàm).
 
     Một flow là DoS khi:
       (A) "trông giống flood" — điểm cộng dồn SYN/UDP/ICMP (dos_classifier) vượt
@@ -251,14 +298,28 @@ def _detect_dos(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
     # Loại đích multicast/broadcast: SSDP(239.255.255.250)/mDNS... là khám phá LAN
     # benign, KHÔNG phải flood nhắm victim. (dos_classifier gốc chỉ loại multicast
     # theo srcip nên bỏ sót các burst tới ĐÍCH multicast — vá tại đây.)
-    is_dos &= ~_multicast_broadcast_dst_mask(df)
+    not_infra = ~_multicast_broadcast_dst_mask(df)
+    is_dos &= not_infra
 
     # Subtype cho các flow DoS (ưu tiên SYN > UDP > ICMP khi cùng vượt — hiếm).
     subtype = np.full(n, "", dtype=object)
     subtype[is_dos & is_icmp] = "ICMP Flood"
     subtype[is_dos & is_udp] = "UDP Flood"
     subtype[is_dos & is_syn] = "SYN Flood"
-    return is_dos, subtype, dos_score.astype(np.int64)
+
+    # FIX (lỗ hổng #3 — ngưỡng cứng DOS_MIN_FLOWS_PER_DST gây gán nhầm họ):
+    # flow "trông giống flood" (A đúng) nhưng CHƯA đủ tín hiệu volume để qua
+    # cổng (B) (vd flood mới bắt đầu, chưa đủ DOS_MIN_FLOWS_PER_DST=40 flow
+    # trong segment) trước đây rơi tự do vào vòng chấm điểm 6 họ bên dưới —
+    # và vì đặc trưng flood 1-gói (spkts thấp, sbytes thấp, dur~0) khớp gần
+    # hết chữ ký "decisive" của Reconnaissance, nó bị gán NHẦM HỌ thay vì bị
+    # bỏ lọt trung tính. Thực nghiệm tái tạo: 39 flow -> "Reconnaissance",
+    # 40 flow -> "DoS" (xem defect_test_and_remediation.md). Đánh dấu các
+    # flow này riêng để classify_segment() gán nhãn trung tính, không cho
+    # rơi vào vòng chấm điểm họ.
+    flood_like_ungated = flood_like & not_infra & ~is_dos
+
+    return is_dos, subtype, dos_score.astype(np.int64), flood_like_ungated
 
 
 # ---------------------------------------------------------------------------
@@ -310,7 +371,7 @@ def classify_segment(df: pd.DataFrame,
         df[_SCORE_COL[fam]] = s
 
     # 2) DoS (cộng dồn + volumetric)
-    is_dos, subtype, dos_score = _detect_dos(df)
+    is_dos, subtype, dos_score, flood_like_ungated = _detect_dos(df)
     df["dos_score"] = dos_score
 
     # 3) Hợp nhất về 1 nhãn theo ưu tiên
@@ -334,7 +395,19 @@ def classify_segment(df: pd.DataFrame,
     has_family = best_family != ""
     predicted[has_family] = best_family[has_family]
 
-    # DoS ưu tiên cao nhất — ghi đè mọi nhãn họ.
+    # FIX (lỗ hổng #3): flow flood-like nhưng chưa qua cổng volumetric
+    # (DOS_MIN_FLOWS_PER_DST/DOS_HIGH_RATE) trước đây rơi vào bất kỳ họ nào có
+    # chữ ký khớp (thường là Reconnaissance, vì đặc trưng 1-gói gần giống nhau)
+    # — đổi 1 loại lỗi (DoS bị bỏ lọt vì chưa đủ volume) lấy 1 loại lỗi khác
+    # (gán nhầm họ, dứt khoát sai). Ưu tiên nhãn trung tính "Suspicious-Low-Volume"
+    # cho các flow này thay vì để rơi tự do vào vòng chấm điểm họ ở trên — nhãn
+    # này không tồn tại trong 7 họ UNSW-NB15 gốc, cần thêm vào tầng hiển
+    # thị/dashboard như một mức cảnh báo riêng (không phải Normal, không phải
+    # DoS xác nhận). Áp SAU khi gán họ (ghi đè) nhưng TRƯỚC khi DoS ghi đè cuối
+    # cùng, để một flow vừa flood-like vừa qua được cổng volumetric vẫn thành DoS.
+    predicted[flood_like_ungated] = "Suspicious-Low-Volume"
+
+    # DoS ưu tiên cao nhất — ghi đè mọi nhãn họ (kể cả Suspicious-Low-Volume).
     predicted[is_dos] = "DoS"
 
     df["attack_subtype"] = np.where(is_dos, subtype, "")

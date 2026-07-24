@@ -163,7 +163,16 @@ class DosGuard:
         Reset cửa sổ đếm sau mỗi lần gọi."""
         self._hot_victim = None
         self._victim_sample_every = 1
-        counts = self._dst_counts
+        # FIX (race condition): hoán đổi dict RA khỏi self._dst_counts trước khi
+        # lặp, thay vì lặp trực tiếp trên self._dst_counts rồi reset ở cuối.
+        # _note_dst() (gọi từ luồng bắt gói, không khóa) ghi vào self._dst_counts
+        # đồng thời với luồng giám sát 1Hz này gọi update()->_update_hot_victim().
+        # Lặp trực tiếp trên dict đang bị mutate từ luồng khác ném
+        # `RuntimeError: dictionary changed size during iteration` (tái tạo được
+        # bằng thực nghiệm — xem defect_test_and_remediation.md). Hoán đổi tham
+        # chiếu là một thao tác nguyên tử dưới GIL: luồng bắt gói sau lệnh này
+        # ghi vào dict MỚI (rỗng), không còn chạm vào dict đang được lặp.
+        counts, self._dst_counts = self._dst_counts, {}
         total = 0
         top_dst = None
         top_n = 0
@@ -182,7 +191,6 @@ class DosGuard:
             self._victim_sample_every = min(
                 self.max_drop, max(2, round(top_n / self.target_pps))
             )
-        self._dst_counts = {}
 
     def should_keep(self, seq: int, dst=None) -> bool:
         """Quyết định giữ (True) / bỏ (False) một gói. Cực rẻ, gọi mỗi gói.
