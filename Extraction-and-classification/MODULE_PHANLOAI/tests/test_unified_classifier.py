@@ -144,5 +144,90 @@ def test_non_ip_protocols_are_normal():
     assert (out["predicted_class"] == "Normal").all()
 
 
+def _port_scan_rows(n=500, dstip="192.168.101.135"):
+    """Port-scan Nmap: 1 SYN probe/cổng, n cổng KHÁC NHAU, cùng 1 host.
+
+    Đặc trưng đo được thật: spkts=1, sbytes=60, dur cực ngắn (LAN RTT),
+    khiến rate = spkts/dur bị đẩy lên hàng nghìn. Trước bản vá, 100% số flow
+    này bị gán nhãn DoS (khớp KB1 của báo cáo NCKH: 248/377 luồng sai).
+    """
+    import random
+    rng = random.Random(0)
+    rows = []
+    for i in range(n):
+        dur = rng.uniform(0.0003, 0.0015)
+        rows.append({
+            "srcip": "192.168.106.60", "dstip": dstip,
+            "sport": 40000, "dport": 1 + i, "proto": "tcp", "state": "s0",
+            "service": "-", "sttl": 64, "dttl": 0, "ct_state_ttl": 0,
+            "synack": 0.0, "tcprtt": 0.0, "dbytes": 0, "dmean": 0,
+            "rate": 1.0 / dur, "sload": 0.0, "sloss": 0, "ct_dst_src_ltm": 10,
+            "spkts": 1, "sbytes": 60, "dpkts": 0, "smean": 60, "dur": dur,
+        })
+    return rows
+
+
+def test_port_scan_not_labeled_dos():
+    """KB1: quét 500 cổng của 1 host KHÔNG được là DoS (lỗi báo cáo NCKH ghi nhận)."""
+    df = pd.DataFrame(_port_scan_rows(500))
+    out = classify_segment(df)
+    assert (out["predicted_class"] == "DoS").sum() == 0
+
+
+def test_port_scan_labeled_reconnaissance():
+    """Và phải ra đúng họ Reconnaissance, KHÔNG phải Suspicious-Low-Volume."""
+    df = pd.DataFrame(_port_scan_rows(500))
+    out = classify_segment(df)
+    assert (out["predicted_class"] == "Reconnaissance").mean() >= 0.95
+
+
+def test_single_port_flood_still_dos_after_scan_fix():
+    """Kiểm soát false-negative: flood dồn 1 cổng PHẢI vẫn là DoS sau bản vá."""
+    df = pd.DataFrame(_syn_flood_rows(500))   # toàn bộ dport=80
+    out = classify_segment(df)
+    assert (out["predicted_class"] == "DoS").mean() >= 0.95
+
+
+def test_single_packet_probe_does_not_trip_high_rate():
+    """rate cao do dur cực ngắn trên flow 1 GÓI không được kích hoạt cổng DoS."""
+    rows = _port_scan_rows(10)
+    for r in rows:
+        r["rate"] = 50000.0          # rate rất cao...
+        r["spkts"] = 1               # ...nhưng chỉ 1 gói -> không đáng tin
+    out = classify_segment(pd.DataFrame(rows))
+    assert (out["predicted_class"] == "DoS").sum() == 0
+
+
+def test_multi_port_flood_within_spread_still_dos():
+    """Biên: flood trải trên 5 cổng (<= DOS_MAX_DPORT_SPREAD) vẫn PHẢI là DoS.
+
+    Chốt lại rằng ngưỡng đa dạng cổng không siết quá tay thành false-negative.
+    """
+    rows = _syn_flood_rows(500)
+    for i, r in enumerate(rows):
+        r["dport"] = 80 + (i % 5)
+    out = classify_segment(pd.DataFrame(rows))
+    assert (out["predicted_class"] == "DoS").mean() >= 0.95
+
+
+def test_flood_with_missing_dport_still_dos():
+    """Flood mà dport THIẾU (NaN) phải vẫn là DoS — chống false-negative.
+
+    Cổng đa dạng cổng đích đếm số dport riêng biệt. Nếu dport thiếu được đếm
+    thô, mỗi NaN thành một phần tử set riêng (Python >=3.10: hash(NaN) theo
+    id(), và nan != nan) → spread = số flow → dst_pressure=False → bỏ lọt
+    100%. Đã đo được đúng như vậy trước khi chuẩn hoá dport: 500/500 DoS
+    thành 0/500. Xảy ra thật với flow ICMP (không có cổng đích) và ô CSV rỗng.
+    """
+    import numpy as np
+    for missing in (np.nan, "", None):
+        rows = _syn_flood_rows(500)
+        for r in rows:
+            r["dport"] = missing
+        out = classify_segment(pd.DataFrame(rows))
+        got = (out["predicted_class"] == "DoS").mean()
+        assert got >= 0.95, f"dport={missing!r}: chỉ {got:.1%} ra DoS"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))

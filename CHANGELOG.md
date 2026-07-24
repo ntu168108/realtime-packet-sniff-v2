@@ -2,6 +2,77 @@
 
 All notable changes to `realtime-packet-sniff-v2` are documented in this file.
 
+## [Unreleased] - fix/scan-vs-flood-misclassification
+
+Vá lỗi phân loại sai lớn nhất mà báo cáo thực nghiệm
+[`docs/reports/2026-07-17-phan-loai-sai-3-kich-ban.md`](docs/reports/2026-07-17-phan-loai-sai-3-kich-ban.md)
+ghi nhận: cả 3 kịch bản tấn công (SYN scan, `nmap -sV -O`, nikto+SQLi) đều sinh
+ra hàng loạt nhãn `DoS` dù không kịch bản nào là DoS thật (Exp1: 248/377 luồng
+sai, Exp2: 995/1015 luồng sai).
+
+### Fixed
+- **Port-scan bị gán nhầm nhãn DoS hàng loạt.** Cổng volumetric trước đây chỉ
+  đếm số flow flood-like theo `dstip`, khiến một cuộc quét 500–1000 cổng vào
+  một host trở nên không phân biệt được với SYN-flood: cả hai đều là "rất nhiều
+  flow flood-like đổ về cùng 1 đích". Bổ sung điều kiện độ đa dạng cổng đích
+  (`DOS_MAX_DPORT_SPREAD`, mặc định 8): một đích chỉ được coi là đang chịu flood
+  khi lượng flow flood-like đổ về nó **tập trung vào ít cổng**. Đây là đặc trưng
+  duy nhất còn phân biệt được hai loại ở tầng flow-only.
+  Đo trực tiếp trên cùng một tập dữ liệu qua classifier cũ và mới:
+  KB1 (500 cổng, 1 host) **500/500 → 0/500** nhãn DoS (493 `Reconnaissance`,
+  7 `Suspicious-Low-Volume`); flood thật (1 cổng, 500 flow) giữ nguyên
+  **500/500** phát hiện đúng.
+- **`rate` (tỷ số `spkts/dur`) kích hoạt cổng DoS trên flow đơn gói.** Một
+  probe 1 gói với `dur` cỡ 0,2 ms đạt `rate = 5000`, chạm thẳng
+  `DOS_HIGH_RATE` — trong khi 1 gói tin không cấu thành "tốc độ cao" theo bất
+  kỳ nghĩa nào. Ranh giới `DoS`/`Reconnaissance` vì thế chỉ cách nhau vài trăm
+  micro-giây độ trễ mạng (`dur=0.000577` → DoS, `dur=0.000705` → Recon), hoàn
+  toàn không ổn định. Bổ sung yêu cầu số gói tối thiểu
+  (`DOS_MIN_PKTS_FOR_RATE`, mặc định 4) trước khi tín hiệu `rate` được tin cậy.
+- **Nhãn trung tính `Suspicious-Low-Volume` không còn ghi đè nhãn họ hợp lệ.**
+  Sau khi cổng đa dạng cổng loại port-scan khỏi DoS, toàn bộ flow scan trở thành
+  `flood_like_ungated`; nếu giữ nguyên logic cũ chúng sẽ bị gán
+  `Suspicious-Low-Volume` — chỉ đổi một nhãn sai lấy một nhãn sai khác. Các flow
+  này đã có `reconnaissance_score` vượt ngưỡng, nên nhãn trung tính giờ chỉ áp
+  cho flow flood-like mà **không họ nào nhận**
+  (`flood_like_ungated & ~has_family`).
+- **`dport` thiếu làm phình số cổng riêng biệt → bỏ lọt flood 100%** (lỗi phát
+  sinh khi cài đặt cổng spread ở trên, phát hiện và vá trước khi triển khai).
+  Đếm cổng riêng biệt trên giá trị `dport` thô là sai khi `dport` là `NaN` —
+  xảy ra thật với flow **ICMP** (không có cổng đích) và ô CSV rỗng: từ Python
+  3.10 `hash(NaN)` dựa trên `id()` và `nan != nan`, nên **mỗi `NaN` là một phần
+  tử set riêng**. Kết quả đo được: flood 500 flow với `dport=NaN` cho
+  `spread=500` > ngưỡng → `dst_pressure=False` → **500/500 → 0/500 DoS, bỏ lọt
+  hoàn toàn**. Đã chuẩn hoá `dport` về `int64` với sentinel `-1` cho giá trị
+  thiếu (tách biệt với cổng `0` hợp lệ) để chúng đếm là đúng một cổng.
+
+### Added
+- 6 test hồi quy trong `tests/test_unified_classifier.py`: port-scan không ra
+  DoS, port-scan ra đúng `Reconnaissance`, flood 1 cổng vẫn ra DoS (kiểm soát
+  false-negative), probe đơn gói rate cao không kích hoạt cổng DoS, flood
+  trải 5 cổng (trong ngưỡng spread) vẫn ra DoS, và flood với `dport`
+  thiếu (`NaN`/`""`/`None`) vẫn ra DoS.
+- 2 biến môi trường hiệu chỉnh: `DOS_MAX_DPORT_SPREAD`, `DOS_MIN_PKTS_FOR_RATE`
+  — xem bảng ở `docs/operations/deployment.vi.md` §11.3.
+
+### Known limitations
+- **Scan hẹp (≤ `DOS_MAX_DPORT_SPREAD` cổng) vào 1 host với ≥ 40 flow vẫn bị
+  gán DoS.** Đây là vùng chồng lấn thật ở tầng flow-only — 60 flow dồn vào 6
+  cổng của một máy về mặt thống kê *đúng là* giống flood. Phân biệt triệt để
+  cần tín hiệu ngoài flow (nhịp thời gian giữa các probe, hoặc trạng thái phản
+  hồi RST của victim). **Không** vá bằng cách hạ `DOS_MAX_DPORT_SPREAD` — làm
+  vậy sẽ bỏ lọt flood đa cổng thật.
+- Ngưỡng `8` và `4` chọn theo thực nghiệm trên traffic LAN của lab này, không
+  phải hằng số phổ quát; hiệu chỉnh qua biến môi trường khi triển khai nơi khác.
+- Nhãn `Suspicious-Low-Volume` vẫn **chưa có biểu diễn riêng ở tầng
+  dashboard/ClickHouse** (tồn đọng từ bản vá trước). Bản vá này làm nhãn đó
+  xuất hiện ít hơn hẳn (scan giờ ra `Reconnaissance`) nhưng không xử lý khoảng
+  trống hiển thị đó.
+- Không chạm tới nguyên nhân gốc rễ #3 của báo cáo (thiếu DPI/TLS → Exploits/
+  SQLi chỉ suy luận gián tiếp từ hình dạng luồng) và cũng chưa thêm cột
+  `dos_reason` mà báo cáo đề xuất để tách nguồn gốc nhãn DoS
+  (`dst_pressure` vs `high_rate`) — cả hai là hạng mục riêng, lớn hơn một PR.
+
 ## [Unreleased] - fix/dosguard-race-and-classifier-gating-edge-cases
 
 Tự triển khai thực nghiệm rà soát repo (gọi trực tiếp `DosGuard` và

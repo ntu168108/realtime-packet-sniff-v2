@@ -70,6 +70,22 @@ DOS_MIN_FLOWS_PER_DST = int(os.environ.get("DOS_MIN_FLOWS_PER_DST", "40"))
 # cả khi chỉ có 1 dòng. Áp cho traffic KHÔNG bị --rand-source băm nhỏ.
 DOS_HIGH_RATE = float(os.environ.get("DOS_HIGH_RATE", "5000"))
 
+# FIX (lỗi #5 — scan bị gán nhầm DoS): cổng volumetric cũ chỉ đếm số flow
+# flood-like theo dstip, nên một port-scan 500 cổng vào 1 host trông y hệt một
+# SYN-flood 500 flow vào 1 host. Đặc trưng phân biệt duy nhất ở tầng flow-only
+# là ĐỘ ĐA DẠNG CỔNG ĐÍCH: flood dồn vào 1 (hoặc rất ít) cổng; scan trải trên
+# hàng trăm cổng. Một đích chỉ được coi là "đang chịu flood" khi lượng flow
+# flood-like đổ về nó tập trung vào không quá ngần này cổng riêng biệt.
+# Đã thực nghiệm: KB1 (500 cổng) 500/500 -> 0/500 DoS; flood thật (1 cổng)
+# giữ nguyên 500/500 DoS. Xem PATCH_SPEC_scan_vs_flood.md.
+DOS_MAX_DPORT_SPREAD = int(os.environ.get("DOS_MAX_DPORT_SPREAD", "8"))
+
+# FIX (lỗi #6 — rate là tỷ số, không phải tốc độ đo): rate = spkts/dur khiến
+# một probe ĐƠN GÓI với dur ~0.2ms đạt rate = 5000, chạm thẳng DOS_HIGH_RATE
+# dù chỉ có đúng 1 gói tin. Một gói tin không cấu thành "tốc độ cao". Chỉ tin
+# vào tín hiệu rate khi flow có đủ số gói để tốc độ mang ý nghĩa thống kê.
+DOS_MIN_PKTS_FOR_RATE = int(os.environ.get("DOS_MIN_PKTS_FOR_RATE", "4"))
+
 # FIX (lỗi #2 — heuristic ".255" loại nhầm victim hợp lệ trên mạng > /24):
 # Danh sách CIDR của (các) mạng LAN thật đang giám sát, phân tách bởi dấu
 # phẩy (vd "192.168.100.0/23,10.0.0.0/24"). Khi được cấu hình, địa chỉ
@@ -255,13 +271,19 @@ def _detect_dos(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, np.ndarray, n
     Một flow là DoS khi:
       (A) "trông giống flood" — điểm cộng dồn SYN/UDP/ICMP (dos_classifier) vượt
           ngưỡng subtype tương ứng; VÀ
-      (B) có tín hiệu VOLUME: hoặc đích của nó nhận >= DOS_MIN_FLOWS_PER_DST flow
-          flood-like trong segment (đặc trưng flood spoofed-source băm nhỏ),
-          hoặc bản thân flow có rate >= DOS_HIGH_RATE (flood cổ điển 1 flow).
+      (B) có tín hiệu VOLUME, một trong hai:
+          - dst_pressure: đích của nó nhận >= DOS_MIN_FLOWS_PER_DST flow flood-like
+            trong segment (đặc trưng flood spoofed-source băm nhỏ) VÀ lượng flow đó
+            dồn vào <= DOS_MAX_DPORT_SPREAD cổng riêng biệt (FIX lỗi #5 — nếu trải
+            trên nhiều cổng thì đó là port-scan, không phải flood);
+          - high_rate: bản thân flow có rate >= DOS_HIGH_RATE (flood cổ điển 1 flow)
+            VÀ có >= DOS_MIN_PKTS_FOR_RATE gói (FIX lỗi #6 — rate của flow đơn gói
+            là hiện vật phép chia spkts/dur, không phải tốc độ thật).
 
     Điều kiện (B) chính là thứ mà kiến trúc cũ thiếu: nó phân biệt "flood thật"
     với "1 flow one-way lẻ trông giống flood" (vd 1 truy vấn DNS không có phản hồi
-    trong segment).
+    trong segment). Hai vế bổ sung ở trên phân biệt tiếp "flood thật" với
+    "port-scan" — hai thứ gần như trùng nhau ở cấp flow nếu chỉ đếm số lượng.
     """
     scored = evaluate_dos_scores(df.copy(), BASELINE_CONFIG)
     syn = scored["syn_score"].values
@@ -275,24 +297,47 @@ def _detect_dos(df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, np.ndarray, n
     is_icmp = icmp >= _DOS_TH["ICMP Flood"]
     flood_like = is_syn | is_udp | is_icmp
 
-    # (B) tín hiệu volume: đếm số flow flood-like theo từng dstip trong segment
+    # (B) tín hiệu volume: đếm số flow flood-like theo từng dstip trong segment,
+    # KÈM độ đa dạng cổng đích của chính nhóm flood-like đó (FIX lỗi #5).
     n = len(df)
     if "dstip" in df.columns:
         dstip = df["dstip"].astype(str).values
+        # PHẢI chuẩn hoá dport về số nguyên trước khi đếm cổng riêng biệt.
+        # Nếu dùng giá trị thô: dport thiếu (NaN — xảy ra thật với flow ICMP
+        # không có cổng đích, hoặc ô CSV rỗng) sẽ làm phình số cổng "riêng biệt",
+        # vì từ Python 3.10 hash(NaN) dựa trên id() và `nan != nan` nên MỖI NaN
+        # là một phần tử set riêng. Hệ quả đã đo được: flood 500 flow với
+        # dport=NaN cho spread=500 > ngưỡng -> dst_pressure=False -> BỎ LỌT
+        # hoàn toàn (500/500 DoS -> 0/500). Gộp mọi dport thiếu về một sentinel
+        # (-1, tách biệt với cổng 0 hợp lệ) để chúng đếm là ĐÚNG MỘT cổng.
+        dport_arr = (pd.to_numeric(df["dport"], errors="coerce")
+                     .fillna(-1).astype("int64").values
+                     if "dport" in df.columns else np.zeros(n, dtype="int64"))
         floodlike_per_dst: dict[str, int] = {}
+        floodlike_dports: dict[str, set] = {}
         for i in range(n):
             if flood_like[i]:
                 d = dstip[i]
                 floodlike_per_dst[d] = floodlike_per_dst.get(d, 0) + 1
+                floodlike_dports.setdefault(d, set()).add(dport_arr[i])
+        # Một đích chỉ "đang chịu flood" khi vừa nhận đủ nhiều flow flood-like
+        # VỪA bị dồn vào ít cổng. Port-scan thoả điều kiện đầu nhưng trải trên
+        # hàng trăm cổng nên bị loại tại đây — đó là toàn bộ mục đích của fix.
         dst_pressure = np.array(
-            [floodlike_per_dst.get(dstip[i], 0) >= DOS_MIN_FLOWS_PER_DST
+            [(floodlike_per_dst.get(dstip[i], 0) >= DOS_MIN_FLOWS_PER_DST)
+             and (len(floodlike_dports.get(dstip[i], ())) <= DOS_MAX_DPORT_SPREAD)
              for i in range(n)], dtype=bool)
     else:
         dst_pressure = np.zeros(n, dtype=bool)
 
     rate = pd.to_numeric(df.get("rate", pd.Series(np.zeros(n))),
                          errors="coerce").fillna(0).values
-    high_rate = rate >= DOS_HIGH_RATE
+    # FIX (lỗi #6): rate cao trên flow ĐƠN GÓI là hiện vật của phép chia
+    # spkts/dur với dur ~ RTT LAN, không phải tốc độ flood. Chỉ tin tín hiệu
+    # rate khi flow có đủ số gói để "tốc độ" mang ý nghĩa thống kê.
+    _spkts = pd.to_numeric(df.get("spkts", pd.Series(np.zeros(n))),
+                           errors="coerce").fillna(0).values
+    high_rate = (rate >= DOS_HIGH_RATE) & (_spkts >= DOS_MIN_PKTS_FOR_RATE)
 
     is_dos = flood_like & (dst_pressure | high_rate)
     # Loại đích multicast/broadcast: SSDP(239.255.255.250)/mDNS... là khám phá LAN
@@ -405,7 +450,14 @@ def classify_segment(df: pd.DataFrame,
     # thị/dashboard như một mức cảnh báo riêng (không phải Normal, không phải
     # DoS xác nhận). Áp SAU khi gán họ (ghi đè) nhưng TRƯỚC khi DoS ghi đè cuối
     # cùng, để một flow vừa flood-like vừa qua được cổng volumetric vẫn thành DoS.
-    predicted[flood_like_ungated] = "Suspicious-Low-Volume"
+    #
+    # FIX (lỗi #5): sau khi cổng đa dạng cổng đích loại port-scan khỏi DoS, toàn
+    # bộ flow scan trở thành flood_like_ungated. KHÔNG được gán chúng thành
+    # Suspicious-Low-Volume — chúng đã có reconnaissance_score vượt ngưỡng và
+    # nhãn ĐÚNG của chúng là Reconnaissance; gán nhãn trung tính ở đây chỉ là đổi
+    # một nhãn sai (DoS) lấy một nhãn sai khác. Nhãn trung tính chỉ dành cho flow
+    # flood-like mà KHÔNG họ nào nhận (thực sự không phân loại được).
+    predicted[flood_like_ungated & ~has_family] = "Suspicious-Low-Volume"
 
     # DoS ưu tiên cao nhất — ghi đè mọi nhãn họ (kể cả Suspicious-Low-Volume).
     predicted[is_dos] = "DoS"

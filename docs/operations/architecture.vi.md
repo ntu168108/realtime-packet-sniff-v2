@@ -133,7 +133,10 @@ Nhãn được gán bởi
 [`MODULE_PHANLOAI/unified_classifier.py`](https://github.com/ntu168108/realtime-packet-sniff-v2/blob/main/Extraction-and-classification/MODULE_PHANLOAI/unified_classifier.py),
 module này chấm điểm 6 họ theo-flow **và** phát hiện DoS (điểm cộng dồn theo
 flow + **cổng chặn volumetric ở cấp segment**: đếm số flow giống flood theo
-từng đích), sau đó quyết định mỗi flow vật lý về **đúng 1** `predicted_class`
+từng đích, **kèm độ đa dạng cổng đích của nhóm đó** — flood dồn vào ít cổng,
+port-scan trải hàng trăm cổng; không có vế thứ hai này thì một cuộc quét 500
+cổng vào 1 host không phân biệt được với SYN-flood và bị gán nhãn DoS hàng
+loạt), sau đó quyết định mỗi flow vật lý về **đúng 1** `predicted_class`
 theo thứ tự ưu tiên (`DoS > Exploits > Shellcode > Generic > Analysis >
 Reconnaissance > Fuzzers > Normal`). Nó ghi ra 7 CSV theo họ sao cho 1 flow chỉ
 mang nhãn tấn công ở **đúng 1** bảng. Cách này thay thế cho 7 filter độc lập

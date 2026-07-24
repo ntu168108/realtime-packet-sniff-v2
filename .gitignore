@@ -95,3 +95,10 @@ Thumbs.db
 Extraction-and-classification/CSV/CSV_Full_feature/*.csv
 Extraction-and-classification/CSV/Filter_*/*.csv
 .codegraph/
+
+# Tarball cài đặt tải về trên máy triển khai (VD kafka_2.13-*.tgz, 130MB) —
+# `*.tar.gz` ở trên KHÔNG khớp đuôi .tgz nên phải liệt kê riêng.
+*.tgz
+
+# Cấu hình agent/IDE cục bộ của máy triển khai
+.claude/
