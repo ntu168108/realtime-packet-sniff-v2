@@ -2,6 +2,55 @@
 
 All notable changes to `realtime-packet-sniff-v2` are documented in this file.
 
+## [Unreleased] - fix/npm-security-advisories-sniff-web
+
+Vá 4 Dependabot alert đang mở trên `sniff-web/web` (1 high + 3 medium). Job
+Dependabot cho `react-router` **fail** nên nó không tự tạo được PR — phải vá tay.
+
+### Security
+- **`postcss` (high) — Path Traversal in Previous Source Map Auto-Loading**
+  (`GHSA-r28c-9q8g-f849`, ảnh hưởng `<= 8.5.17`). Dependency transitive qua vite;
+  nâng lên `8.5.23`.
+- **`react-router` (medium ×2)** — Open redirect via backslash trong `<Link>`/
+  `useNavigate` (`GHSA-wrjc-x8rr-h8h6`) và Arbitrary Constructor Injection qua
+  `deserializeErrors()` (`GHSA-337j-9hxr-rhxg`). Cả hai chỉ được vá từ **7.18.0**,
+  tức phải nhảy major `6.x → 7.x`.
+- **`react-router-dom` (medium)** — Open redirect leading to XSS,
+  `first_patched_version: null` — **không có bản vá nào trong nhánh 6.x**. Cách
+  duy nhất là lên v7, nơi `react-router-dom` chỉ còn là package re-export.
+
+Đã nâng `react-router` lên `^7.18.1` và **bỏ hẳn `react-router-dom`**, chuyển 5
+chỗ import sang `react-router` theo đúng hướng dẫn upgrade chính thức của v7
+(v8 sẽ loại bỏ `react-router-dom`, nên đây cũng là hướng đi lâu dài). App chỉ
+dùng API khai báo (`BrowserRouter`, `Routes`, `Route`, `Navigate`, `useNavigate`,
+`NavLink`, `Link`, `useSearchParams`) — đều còn nguyên trong v7, nên đổi import
+là toàn bộ thay đổi cần thiết. Xác minh: `npx tsc --noEmit` sạch,
+`npm run build` thành công, `vitest run` 3/3 pass, web UI trả HTTP 200 cho cả
+trang và bundle sau khi restart.
+
+### Known limitations
+- **Còn 1 advisory high chưa vá — CÓ CHỦ Ý:** `react-router` 7.12.0–8.2.0 có
+  *RSC Mode CSRF Bypass Allows Action Execution Before 400 Response*
+  (`GHSA-qwww-vcr4-c8h2`). **Không áp dụng cho hệ thống này:** `sniff-web` là SPA
+  client-only — không có `RouterProvider`/`createBrowserRouter`/`HydratedRouter`,
+  không RSC, không SSR, không react-router action; FastAPI chỉ `mount()` thư mục
+  `web/dist` đã build như static files, không có runtime react-router phía server.
+  Bản vá duy nhất là `react-router@8.3.0`, mà v8 yêu cầu **React >= 19.2.7** trong
+  khi app đang React 18.3.1 — nâng lên sẽ kéo theo migration React 18→19 cho toàn
+  bộ UI, rủi ro hồi quy lớn hơn nhiều so với một advisory không nằm trên đường
+  code đang dùng. Ghi vào backlog cùng việc nâng React 19.
+- Lưu ý minh bạch: advisory này **không** ảnh hưởng nhánh 6.x, nên đây là một
+  đánh đổi có ý thức — bỏ 3 advisory *có* áp dụng (2 open-redirect trong
+  `<Link>`/`useNavigate` là đường code app dùng thật) để nhận 1 advisory *không*
+  áp dụng. Phơi nhiễm thực tế giảm, nhưng `npm audit` sẽ **không** báo sạch.
+
+### Fixed
+- **`sniff-web/web/dist/assets` thuộc `root:root`** trong khi `sniff-web.service`
+  chạy user `tu`, khiến `npm run build` fail bằng
+  `EACCES: permission denied` — user triển khai **không thể rebuild frontend**.
+  Dấu vết của một lần build chạy bằng `sudo`. Đã `chown -R tu:tu dist`. Đây là
+  lỗi trạng thái máy triển khai, không phải lỗi code trong repo.
+
 ## [Unreleased] - fix/idempotency-test-fixture-and-dos-tuning-docs
 
 ### Fixed
