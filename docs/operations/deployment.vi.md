@@ -310,7 +310,9 @@ clickhouse-client --query \
 | Biến | Mặc định | Ý nghĩa / khi nào chỉnh |
 |---|---|---|
 | `DOS_MIN_FLOWS_PER_DST` | `40` | Số flow flood-like tối thiểu tới cùng 1 đích/segment để coi là flood. Tăng nếu mạng có burst benign lớn (VD nhiều client tới 1 server); giảm nếu muốn nhạy hơn. |
+| `DOS_MAX_DPORT_SPREAD` | `8` | Số cổng đích riêng biệt TỐI ĐA mà lượng flow flood-like tới 1 đích được phép trải ra và vẫn bị coi là flood. Đây là thứ phân biệt flood (dồn vào ít cổng) với port-scan (trải hàng trăm cổng) — không có nó, một cuộc quét 500 cổng bị gán nhãn DoS hàng loạt. **Cẩn thận khi giảm:** hạ quá thấp sẽ bỏ lọt flood đa cổng thật. Tăng nếu môi trường có flood nhắm nhiều cổng dịch vụ cùng lúc. |
 | `DOS_HIGH_RATE` | `5000` | Ngưỡng pps của 1 flow đơn để tự coi là flood (flood cổ điển không spoof). |
+| `DOS_MIN_PKTS_FOR_RATE` | `4` | Số gói (`spkts`) tối thiểu để tín hiệu `DOS_HIGH_RATE` được tin cậy. `rate = spkts/dur` là tỷ số, nên một probe ĐƠN GÓI với `dur` cỡ 0,2 ms đạt `rate = 5000` dù chỉ có 1 gói. Tăng nếu vẫn thấy probe ngắn bị gán DoS; giảm về `1` để trở lại hành vi cũ (không khuyến nghị). |
 | `FAMILY_MIN_DTTL` | `60` | "Đích ở gần" (ít hop) mới gán nhãn HỌ — chặn false-positive từ traffic đi ra internet. Đặt `0` để TẮT nếu bạn giám sát cả traffic tới host ở xa. |
 | `DOS_SYN_THRESHOLD` / `DOS_UDP_THRESHOLD` / `DOS_ICMP_THRESHOLD` | `42/32/28` | Ngưỡng điểm cộng dồn per-flow cho từng subtype DoS. |
 

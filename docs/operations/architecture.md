@@ -134,7 +134,11 @@ Labels are assigned by
 [`MODULE_PHANLOAI/unified_classifier.py`](https://github.com/ntu168108/realtime-packet-sniff-v2/blob/main/Extraction-and-classification/MODULE_PHANLOAI/unified_classifier.py),
 which scores the six per-flow families **and** detects DoS (additive per-flow
 score + a **segment-level volumetric gate**: count of flood-like flows per
-destination), then resolves each physical flow to a **single** `predicted_class`
+destination, **plus the destination-port spread of that group** — a flood
+converges on few ports while a port-scan fans out over hundreds; without the
+second condition a 500-port scan of one host is indistinguishable from a
+SYN-flood and gets mislabelled `DoS` en masse), then resolves each physical flow
+to a **single** `predicted_class`
 by priority (`DoS > Exploits > Shellcode > Generic > Analysis > Reconnaissance >
 Fuzzers > Normal`). It writes the seven per-family CSVs so that a flow carries its
 attack label in **exactly one** table. This replaced seven independent filters that
