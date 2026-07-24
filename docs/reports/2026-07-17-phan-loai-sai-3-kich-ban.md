@@ -2,7 +2,7 @@
 
 > **TRẠNG THÁI KHẮC PHỤC (cập nhật 2026-07-24):** nguyên nhân gốc rễ #1 và #2 ở
 > mục 6 **đã được vá** trên branch `fix/scan-vs-flood-misclassification`. Xem
-> [mục 8](#8-trạng-thái-khắc-phục-2026-07-24) ở cuối báo cáo để biết đã vá gì,
+> [mục 8](#8-trang-thai-khac-phuc-2026-07-24) ở cuối báo cáo để biết đã vá gì,
 > đo lại ra sao, và phần nào **vẫn còn tồn đọng**. Nguyên nhân #3 (thiếu DPI/TLS)
 > và #4 chưa xử lý.
 
@@ -10,7 +10,7 @@
 - **Attacker (Kali):** `192.168.106.60`
 - **Victim:** `192.168.101.135`
 - **Nguồn dữ liệu:** `network_ids.flows_all` (ClickHouse, `http://localhost:8123`)
-- **Bộ phân loại:** [`unified_classifier.py`](../../Extraction-and-classification/MODULE_PHANLOAI/unified_classifier.py)
+- **Bộ phân loại:** [`unified_classifier.py`](https://github.com/ntu168108/realtime-packet-sniff-v2/blob/main/Extraction-and-classification/MODULE_PHANLOAI/unified_classifier.py)
 
 ## 1. Tổng quan kết quả theo khung giờ
 

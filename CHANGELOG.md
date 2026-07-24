@@ -2,6 +2,45 @@
 
 All notable changes to `realtime-packet-sniff-v2` are documented in this file.
 
+## [Unreleased] - fix/ci-red-docs-strict-and-dosguard-race-on-py310
+
+Hai workflow đang báo đỏ trên `main` (`Docs`, `Web GUI`). Vá cả hai.
+
+### Fixed
+- **`Docs` đỏ: `mkdocs build --strict` abort.** Báo cáo
+  `docs/reports/2026-07-17-phan-loai-sai-3-kich-ban.md` có link tương đối trỏ
+  RA NGOÀI cây `docs/`
+  (`../../Extraction-and-classification/.../unified_classifier.py`) — mkdocs
+  không phân giải được, phát WARNING, và `--strict` biến warning thành lỗi. Đổi
+  sang URL GitHub tuyệt đối theo đúng convention các doc khác trong repo đang
+  dùng. Đồng thời sửa anchor nội bộ `#8-trạng-thái-khắc-phục-2026-07-24` →
+  `#8-trang-thai-khac-phuc-2026-07-24`: mkdocs slugify bỏ dấu tiếng Việt và xoá
+  hẳn ký tự `đ`, nên anchor có dấu không bao giờ khớp. Đã dựng lại site tại chỗ
+  bằng `mkdocs build --strict` để xác nhận sạch.
+- **`Web GUI` đỏ trên Python 3.10 (3.11/3.12 xanh): race condition trong
+  `DosGuard` CHƯA được vá thật.** `test_no_race_between_capture_thread_and_monitor_thread`
+  vẫn tái tạo được `RuntimeError: dictionary changed size during iteration`.
+  Bản vá trước chỉ hoán đổi tham chiếu `counts, self._dst_counts = self._dst_counts, {}`
+  và lập luận rằng thao tác nguyên tử dưới GIL là đủ. **Lập luận đó sai:**
+  `_note_dst()` copy tham chiếu dict vào biến local *trước* khi ghi, nên nếu
+  luồng giám sát hoán đổi đúng giữa hai bước thì phép ghi vẫn rơi vào dict CŨ —
+  chính dict đang được lặp. Đã chứng minh cơ chế một cách tất định (không cần
+  đa luồng): giữ tham chiếu → hoán đổi → ghi qua tham chiếu cũ → `RuntimeError`.
+  Vá bằng `threading.Lock` bao **cả** phép ghi trong `_note_dst()` và phép hoán
+  đổi trong `_update_hot_victim()`; vòng lặp tổng hợp chạy NGOÀI khoá nên thời
+  gian giữ khoá là một phép tăng counter hoặc một phép hoán đổi.
+
+### Added
+- 3 test trong `tests/integration_tests/test_dos_guard.py` kiểm tra **trực tiếp
+  bất biến của khoá** thay vì phụ thuộc lịch biểu luồng:
+  `test_note_dst_serialises_on_counts_lock`,
+  `test_update_hot_victim_swaps_counts_under_lock`,
+  `test_hot_victim_still_detected_after_locking`. Lý do cần chúng: test race
+  theo thời gian có sẵn **tái tạo được lỗi trên Python 3.10 nhưng không trên
+  3.12**, nên bug đã lọt qua CI ở 3.12 hơn một lần. Ba test mới tất định và bắt
+  lỗi trên mọi phiên bản — đã kiểm chứng bằng cách tạm bỏ khoá: test đỏ đúng
+  như mong đợi, khôi phục khoá thì xanh.
+
 ## [Unreleased] - fix/scan-vs-flood-misclassification
 
 Vá lỗi phân loại sai lớn nhất mà báo cáo thực nghiệm

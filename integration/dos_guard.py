@@ -25,6 +25,8 @@ Cách dùng (xem integration/run_producer.py):
         time.sleep(1)
 """
 
+import threading
+
 
 class DosGuard:
     """Phát hiện flood bằng pps và cắt tải bằng lấy mẫu 1/N.
@@ -79,6 +81,13 @@ class DosGuard:
         self.victim_share = float(victim_share)
         self.victim_min_pps = float(victim_min_pps)
         self._dst_counts: dict = {}
+        # FIX (race #2): khoá bảo vệ _dst_counts giữa luồng bắt gói (_note_dst)
+        # và luồng giám sát 1Hz (_update_hot_victim). Bản vá trước chỉ hoán đổi
+        # tham chiếu và cho rằng thao tác nguyên tử dưới GIL là đủ — KHÔNG đủ,
+        # xem ghi chú ở _note_dst(). Vùng khoá được giữ CỰC NGẮN (chỉ 1 phép
+        # tăng counter, hoặc 1 phép hoán đổi) nên không nằm trên đường đi tốn
+        # kém; vòng lặp tổng hợp chạy NGOÀI khoá.
+        self._counts_lock = threading.Lock()
         self._dst_cap: int = 4096
         self._hot_victim = None
         self._victim_sample_every: int = 1
@@ -148,13 +157,25 @@ class DosGuard:
     def _note_dst(self, dst) -> None:
         """Đếm 1 gói theo đích cho cửa sổ 1 giây. Chặn phình bộ nhớ khi bị flood
         spoofed-DESTINATION bằng trần số key (bỏ qua key mới khi đầy — các đích
-        'nóng' đã có mặt vẫn được đếm tiếp)."""
-        c = self._dst_counts
-        if dst in c:
-            c[dst] += 1
-        elif len(c) < self._dst_cap:
-            c[dst] = 1
-        # else: counter đầy -> bỏ qua đích mới (đủ để nhận diện đích nóng đã thấy)
+        'nóng' đã có mặt vẫn được đếm tiếp).
+
+        FIX (race #2): phải đọc self._dst_counts và ghi vào nó TRONG cùng một
+        vùng khoá. Bản vá trước để nguyên đoạn này không khoá, dựa vào lập luận
+        "hoán đổi tham chiếu ở _update_hot_victim là nguyên tử dưới GIL nên
+        luồng bắt gói sẽ ghi vào dict mới". Lập luận đó SAI: luồng này copy tham
+        chiếu vào biến local TRƯỚC khi ghi, nên nếu monitor hoán đổi đúng giữa
+        hai bước thì phép ghi vẫn rơi vào dict CŨ — chính dict monitor đang lặp
+        → `RuntimeError: dictionary changed size during iteration`. Cửa sổ race
+        này hẹp và phụ thuộc bytecode: CI tái tạo được trên Python 3.10 nhưng
+        KHÔNG trên 3.12 (xem test_no_race_between_capture_thread_and_monitor_thread).
+        """
+        with self._counts_lock:
+            c = self._dst_counts
+            if dst in c:
+                c[dst] += 1
+            elif len(c) < self._dst_cap:
+                c[dst] = 1
+            # else: counter đầy -> bỏ qua đích mới (đủ để nhận diện đích nóng đã thấy)
 
     def _update_hot_victim(self, pps: float) -> None:
         """Từ cửa sổ đếm 1 giây, xác định 'đích nóng' (victim) nếu lưu lượng dồn
@@ -163,16 +184,21 @@ class DosGuard:
         Reset cửa sổ đếm sau mỗi lần gọi."""
         self._hot_victim = None
         self._victim_sample_every = 1
-        # FIX (race condition): hoán đổi dict RA khỏi self._dst_counts trước khi
-        # lặp, thay vì lặp trực tiếp trên self._dst_counts rồi reset ở cuối.
-        # _note_dst() (gọi từ luồng bắt gói, không khóa) ghi vào self._dst_counts
-        # đồng thời với luồng giám sát 1Hz này gọi update()->_update_hot_victim().
-        # Lặp trực tiếp trên dict đang bị mutate từ luồng khác ném
-        # `RuntimeError: dictionary changed size during iteration` (tái tạo được
-        # bằng thực nghiệm — xem defect_test_and_remediation.md). Hoán đổi tham
-        # chiếu là một thao tác nguyên tử dưới GIL: luồng bắt gói sau lệnh này
-        # ghi vào dict MỚI (rỗng), không còn chạm vào dict đang được lặp.
-        counts, self._dst_counts = self._dst_counts, {}
+        # Hoán đổi dict RA khỏi self._dst_counts rồi lặp trên bản đã tách, thay
+        # vì lặp trực tiếp trên self._dst_counts (đang bị luồng bắt gói mutate)
+        # — lặp trực tiếp ném `RuntimeError: dictionary changed size during
+        # iteration`.
+        #
+        # FIX (race #2): phép hoán đổi phải nằm TRONG khoá. Chỉ hoán đổi tham
+        # chiếu (như bản vá trước) là KHÔNG đủ: _note_dst() copy tham chiếu vào
+        # biến local trước khi ghi, nên một writer đã vào giữa hai bước đó sẽ ghi
+        # vào dict cũ trong lúc ta đang lặp nó. Khoá ở đây đảm bảo: khi lệnh
+        # dưới trả về, mọi writer hoặc đã ghi xong (dưới khoá) hoặc sẽ lấy khoá
+        # SAU và nhìn thấy dict mới — không ai còn giữ đường ghi vào `counts`.
+        # Nhờ vậy vòng lặp tổng hợp bên dưới chạy NGOÀI khoá vẫn an toàn, giữ
+        # thời gian giữ khoá ở mức tối thiểu.
+        with self._counts_lock:
+            counts, self._dst_counts = self._dst_counts, {}
         total = 0
         top_dst = None
         top_n = 0

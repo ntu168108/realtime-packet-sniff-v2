@@ -217,3 +217,66 @@ def test_no_race_between_capture_thread_and_monitor_thread():
         assert errors == [], f"Race condition reproduced: {errors}"
     finally:
         sys.setswitchinterval(old_interval)
+
+
+# ---------------------------------------------------------------------------
+# Bất biến của khoá bảo vệ _dst_counts (FIX race #2)
+#
+# test_no_race_between_capture_thread_and_monitor_thread ở trên là test THEO
+# THỜI GIAN: nó chỉ phát hiện race khi lịch biểu luồng đúng lúc. Thực tế nó
+# tái tạo được race trên Python 3.10 nhưng KHÔNG trên 3.12 (bytecode 3.12 làm
+# cửa sổ hẹp gần như biến mất), nên bug từng lọt qua CI ở 3.12 và chỉ đỏ ở 3.10.
+#
+# Hai test dưới đây kiểm tra TRỰC TIẾP bất biến của bản vá — cả hai phía đọc/ghi
+# _dst_counts phải đi qua _counts_lock — nên chúng tất định và bắt lỗi trên MỌI
+# phiên bản Python, kể cả khi race không kịp xảy ra trong lần chạy đó.
+# ---------------------------------------------------------------------------
+def _blocks_while_lock_held(g, fn, timeout=0.3):
+    """True nếu `fn` bị chặn trong khi _counts_lock đang bị giữ."""
+    import threading
+    done = threading.Event()
+
+    def run():
+        fn()
+        done.set()
+
+    g._counts_lock.acquire()
+    try:
+        threading.Thread(target=run, daemon=True).start()
+        blocked = not done.wait(timeout)
+    finally:
+        g._counts_lock.release()
+    assert done.wait(2), "không hoàn tất sau khi nhả khoá — có thể deadlock"
+    return blocked
+
+
+def test_note_dst_serialises_on_counts_lock():
+    """_note_dst() PHẢI ghi _dst_counts dưới khoá.
+
+    Nếu không, nó copy tham chiếu dict vào biến local rồi ghi ngoài khoá; khi
+    _update_hot_victim() hoán đổi dict đúng giữa hai bước đó, phép ghi rơi vào
+    dict CŨ — chính dict đang được lặp → RuntimeError.
+    """
+    g = _fresh(backpressure=True, victim_share=0.5, victim_min_pps=1_000)
+    assert _blocks_while_lock_held(g, lambda: g._note_dst(b"10.0.0.1")), \
+        "_note_dst() không lấy _counts_lock -> race vẫn còn"
+
+
+def test_update_hot_victim_swaps_counts_under_lock():
+    """Phép hoán đổi _dst_counts trong _update_hot_victim() PHẢI nằm trong khoá."""
+    g = _fresh(backpressure=True, victim_share=0.5, victim_min_pps=1_000)
+    g._note_dst(b"10.0.0.1")
+    assert _blocks_while_lock_held(g, lambda: g._update_hot_victim(80_000.0)), \
+        "_update_hot_victim() hoán đổi ngoài khoá -> race vẫn còn"
+
+
+def test_hot_victim_still_detected_after_locking():
+    """Kiểm soát hồi quy: thêm khoá KHÔNG được làm mất khả năng nhận đích nóng."""
+    g = _fresh(backpressure=True, victim_share=0.5, victim_min_pps=10)
+    for _ in range(100):
+        g._note_dst(b"192.168.101.135")   # đích nóng
+    for i in range(10):
+        g._note_dst(f"10.0.0.{i}".encode())
+    g._update_hot_victim(80_000.0)
+    assert g._hot_victim == b"192.168.101.135"
+    assert g._victim_sample_every >= 2
