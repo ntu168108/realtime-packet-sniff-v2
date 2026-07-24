@@ -213,6 +213,45 @@ Có test hồi quy `test_flood_with_missing_dport_still_dos` phủ cả `NaN`, `
 
 Không có false-negative: mọi kịch bản flood thật giữ nguyên 100% phát hiện.
 Test suite `MODULE_PHANLOAI`: 40 pass → **46 pass** (+6 test hồi quy), 2 skip.
+
+### 8.3b. Đo lại trên CHÍNH DỮ LIỆU THẬT của báo cáo này (2026-07-24)
+
+Các flow của 3 kịch bản vẫn còn nguyên trong `network_ids.flows_all`. Đã export
+lại chúng (de-dup: `flows_all` là Merge của 7 bảng nên mỗi flow vật lý xuất hiện
+7 lần) và chạy qua classifier **sau khi vá** với **cùng đầu vào**. Nhãn cũ đọc
+trực tiếp từ ClickHouse tái tạo đúng Bảng 3.1 ở mục 1, xác nhận phép so sánh
+là hợp lệ:
+
+| Khung giờ | Kịch bản | Nhãn DoS cũ | Nhãn DoS mới | Các flow đó chuyển thành |
+|---|---|---:|---:|---|
+| 07:15 | phần đầu SYN scan `-p 1-500` | 495 | **0** | 488 Reconnaissance + 7 Suspicious-Low-Volume |
+| 07:17 | Exp1 – SYN scan + ping sweep | 248 | **0** | 244 Reconnaissance + 4 Suspicious-Low-Volume |
+| 07:21 | Exp2 – `nmap -sV -O -p 1-1000` | 995 | **0** | 986 Reconnaissance + 9 Suspicious-Low-Volume |
+| 07:22 | Exp3 – nikto + SQLi | 3 | **0** | 3 Reconnaissance |
+| 2026-07-24 | flow đơn lẻ (artifact `high_rate`) | 7 | **0** | 5 Suspicious-Low-Volume + 2 Reconnaissance |
+| | **Tổng** | **1748** | **0** | |
+
+**Không một flow nào MỚI trở thành DoS** ở bất kỳ khung nào — bản vá chỉ bỏ nhãn
+DoS sai, không tạo nhãn DoS mới.
+
+Phát hiện đi kèm khi phân rã: **toàn bộ 1748 nhãn `DoS` mà hệ thống từng sinh ra
+đều là false-positive.** Không có một cuộc flood thật nào trong dữ liệu đã lưu —
+mọi khung có nhãn DoS đều mang chữ ký port-scan (1 `srcip`, 1 `dstip`, hàng trăm
+`dport` riêng biệt, `spkts=1`) hoặc là flow đơn lẻ 1–2 gói. Con số 495 ở khung
+07:15 nằm ngoài Bảng 3.1 của báo cáo gốc nhưng cùng bản chất (phần đầu của cùng
+cuộc quét).
+
+### 8.3c. Phần xác minh CHƯA làm được
+
+Kiểm soát false-negative **trên traffic sống** (mục 9 của quy trình vá: phát một
+SYN-flood spoofed-source thật bằng `hping3 -S --rand-source` và xác nhận hệ thống
+**vẫn** gán nhãn DoS) **chưa chạy được**: `hping3` và `nmap` chưa cài trên máy
+sniff, và `sudo` yêu cầu mật khẩu.
+
+Hiện tại kiểm soát false-negative chỉ dựa trên: (a) 4 kịch bản flood tổng hợp ở
+mục 8.3 — đều giữ 100% phát hiện; (b) 6 test hồi quy; (c) dữ liệu thật đã lưu
+**không chứa** flood thật nào để đối chiếu. **Cần chạy mục 9 trước khi coi bản vá
+là đã xác minh đầy đủ trên môi trường sản xuất.**
 Test suite gốc `tests/`: 52 pass, 1 fail — fail này **đã có sẵn** ở commit
 `3266830` trước khi vá (`test_idempotency.py`, guard chống dữ liệu giả của
 `clickhouse_sink` loại fixture 200 dòng của chính test), không liên quan bản vá.

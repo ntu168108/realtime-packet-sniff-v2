@@ -55,6 +55,22 @@ sai, Exp2: 995/1015 luồng sai).
 - 2 biến môi trường hiệu chỉnh: `DOS_MAX_DPORT_SPREAD`, `DOS_MIN_PKTS_FOR_RATE`
   — xem bảng ở `docs/operations/deployment.vi.md` §11.3.
 
+### Verified on production data
+- Đã export lại **chính các flow của 3 kịch bản** từ `network_ids.flows_all`
+  (de-dup 7× của bảng Merge) và chạy qua classifier sau vá với cùng đầu vào.
+  Nhãn cũ đọc từ ClickHouse tái tạo đúng Bảng 3.1 của báo cáo, nên phép so sánh
+  hợp lệ. Kết quả: **1748 nhãn `DoS` → 0**, cụ thể 07:15 495→0, 07:17 248→0,
+  07:21 995→0, 07:22 3→0, và 7 flow đơn lẻ ngày 07-24 →0. **Không flow nào mới
+  trở thành DoS.** Xem `docs/reports/2026-07-17-phan-loai-sai-3-kich-ban.md`
+  §8.3b.
+- Phát hiện đi kèm: **toàn bộ 1748 nhãn `DoS` hệ thống từng sinh ra đều là
+  false-positive** — dữ liệu đã lưu không chứa flood thật nào; mọi khung có nhãn
+  DoS đều mang chữ ký port-scan hoặc là flow đơn lẻ 1–2 gói.
+- **Chưa xác minh:** kiểm soát false-negative trên traffic sống
+  (`hping3 -S --rand-source` phải vẫn ra nhãn DoS) chưa chạy được — `hping3`/
+  `nmap` chưa cài trên máy sniff và `sudo` cần mật khẩu. Kiểm soát hiện tại chỉ
+  dựa trên 4 kịch bản flood tổng hợp + 6 test hồi quy. Xem §8.3c.
+
 ### Known limitations
 - **Scan hẹp (≤ `DOS_MAX_DPORT_SPREAD` cổng) vào 1 host với ≥ 40 flow vẫn bị
   gán DoS.** Đây là vùng chồng lấn thật ở tầng flow-only — 60 flow dồn vào 6
