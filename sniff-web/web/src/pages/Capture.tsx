@@ -31,6 +31,7 @@ export default function Capture() {
   const parentRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [diagnostic, setDiagnostic] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [lastConfig, setLastConfig] = useState<LastConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [deepDecode, setDeepDecode] = useState(false);
@@ -53,10 +54,12 @@ export default function Capture() {
 
   useEffect(() => {
     (async () => {
+      // 1) Luôn lấy danh sách NIC THẬT trên máy trước, để mọi quyết định chọn
+      //    card đều dựa trên các interface đang tồn tại.
+      let ifs: InterfaceInfo[] = [];
       try {
-        const ifs = await api.get<InterfaceInfo[]>('/api/interfaces');
+        ifs = await api.get<InterfaceInfo[]>('/api/interfaces');
         setInterfaces(ifs);
-        if (ifs.length && !iface) setIface(ifs[0].name);
       } catch (e: unknown) {
         // 503 from /api/interfaces means the backend couldn't import core.capture.
         // Show a diagnostic so the operator knows where to look.
@@ -77,10 +80,24 @@ export default function Capture() {
           );
         }
       }
+
+      // 2) Cấu hình đã lưu chỉ là GỢI Ý: chỉ khôi phục NIC nếu nó VẪN tồn tại
+      //    trên máy này. Nếu máy đổi/đổi tên card (vd snapshot sang NIC khác),
+      //    fallback về card đầu tiên đang có thay vì ép chọn NIC không tồn tại
+      //    (đó chính là lỗi "Interface 'ens19' not found").
+      let chosen = ifs.length ? ifs[0].name : '';
       try {
         const lc = await api.get<LastConfig>('/api/capture/last-config');
         setLastConfig(lc);
-        setIface(lc.interface);
+        if (ifs.some((i) => i.name === lc.interface)) {
+          chosen = lc.interface;
+        } else if (lc.interface) {
+          setNotice(
+            `NIC "${lc.interface}" từ cấu hình trước không còn trên máy này — ` +
+            `tạm chọn "${chosen || '(không có card nào)'}". ` +
+            'Bấm Start để cập nhật lại pipeline Kafka/ClickHouse.'
+          );
+        }
         setBpf(lc.bpf_filter || '');
         setSnaplen(lc.snaplen);
         setPromisc(lc.promisc);
@@ -88,8 +105,10 @@ export default function Capture() {
       } catch {
         /* no last config — first run */
       } finally {
+        setIface(chosen);
         setLoading(false);
       }
+
       try {
         const dd = await api.get<{ enabled: boolean }>('/api/capture/deep-decode');
         setDeepDecode(dd.enabled);
@@ -134,21 +153,40 @@ export default function Capture() {
     setLoading(true);
     setError(null);
     setDiagnostic(null);
+    setNotice(null);
     try {
       const ifs = await api.get<InterfaceInfo[]>('/api/interfaces');
       setInterfaces(ifs);
-      if (ifs.length && !iface) setIface(ifs[0].name);
+      // Giữ NIC đang chọn nếu nó vẫn còn; nếu không thì rơi về NIC đầu tiên.
+      setIface((cur) => (ifs.some((i) => i.name === cur) ? cur : (ifs[0]?.name ?? '')));
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
-  }, [api, iface]);
+  }, [api]);
 
   async function start() {
     setError(null);
+    setNotice(null);
+    if (!iface) {
+      setError('Chưa chọn được interface nào.');
+      return;
+    }
+    // Chốt chặn cuối: không bao giờ gửi lên một NIC không còn tồn tại.
+    if (!interfaces.some((i) => i.name === iface)) {
+      setError(`Interface "${iface}" không còn tồn tại trên máy này.`);
+      setIface(interfaces[0]?.name ?? '');
+      return;
+    }
     try {
-      await api.post('/api/capture/start', {
+      const res = await api.post<{
+        ok: boolean;
+        sniff_producer?: {
+          config_updated: boolean; config_msg: string;
+          restarted: boolean; restart_msg: string;
+        };
+      }>('/api/capture/start', {
         interface: iface,
         bpf_filter: bpf,
         snaplen,
@@ -156,6 +194,13 @@ export default function Capture() {
         auto_restore: autoRestore,
       });
       setPackets([]);
+      // Capture đã chạy; chỉ cảnh báo nếu pipeline nền chưa kịp đồng bộ theo NIC mới.
+      const sp = res?.sniff_producer;
+      if (sp && !sp.config_updated) {
+        setNotice(`Đang bắt gói trên ${iface}, nhưng chưa ghi được config.yaml: ${sp.config_msg}`);
+      } else if (sp && !sp.restarted) {
+        setNotice(`Đang bắt gói trên ${iface}, nhưng sniff-producer chưa restart được: ${sp.restart_msg}`);
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -199,34 +244,55 @@ export default function Capture() {
             )}
           </div>
         )}
+        {notice && (
+          <div
+            className="mono"
+            style={{
+              color: 'var(--warn)',
+              fontSize: 12,
+              padding: 10,
+              background: 'var(--surface)',
+              borderRadius: 4,
+              marginBottom: 8,
+              whiteSpace: 'pre-wrap',
+            }}
+          >
+            {notice}
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           <div>
             <label className="muted" style={{ fontSize: 11 }}>
               Interface
             </label>
             <br />
-            {interfaces.length === 0 ? (
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              {interfaces.length === 0 ? (
                 <span className="muted mono" style={{ fontSize: 12 }}>
                   {loading ? 'loading…' : 'none detected'}
                 </span>
-                <button className="btn ghost" onClick={reload} disabled={loading}>
-                  Reload
-                </button>
-              </div>
-            ) : (
-              <select
-                value={iface}
-                onChange={(e) => setIface(e.target.value)}
-                disabled={!!status?.running}
+              ) : (
+                <select
+                  value={iface}
+                  onChange={(e) => setIface(e.target.value)}
+                  disabled={!!status?.running}
+                >
+                  {interfaces.map((i) => (
+                    <option key={i.name} value={i.name}>
+                      {i.name} ({i.ipv4 || 'no IP'})
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button
+                className="btn ghost"
+                onClick={reload}
+                disabled={loading}
+                title="Quét lại danh sách NIC (dùng khi cắm/rút card hoặc đổi card)"
               >
-                {interfaces.map((i) => (
-                  <option key={i.name} value={i.name}>
-                    {i.name} ({i.ipv4 || 'no IP'})
-                  </option>
-                ))}
-              </select>
-            )}
+                Reload
+              </button>
+            </div>
           </div>
           <div>
             <label className="muted" style={{ fontSize: 11 }}>

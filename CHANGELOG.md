@@ -2,6 +2,32 @@
 
 All notable changes to `realtime-packet-sniff-v2` are documented in this file.
 
+## [Unreleased]
+
+### Fixed
+- **Web GUI `/capture` — chọn NIC linh hoạt.** Trước đây trang Capture nạp
+  `last_capture.json` rồi **ghi đè** interface đang chọn, bất kể NIC đó còn tồn
+  tại hay không (điển hình khi khôi phục snapshot sang máy có NIC tên khác:
+  `ens19` đã lưu vs NIC thật `ens33`). Dropdown hiển thị NIC thật nhưng state
+  vẫn là NIC cũ nên bấm Start bị `400 Interface 'ens19' not found`. Nay: chỉ
+  khôi phục NIC đã lưu nếu nó **vẫn tồn tại**, fallback về NIC đầu tiên kèm
+  thông báo; thêm nút **Reload** để quét lại danh sách (hỗ trợ cắm/rút/đổi
+  card); chặn gửi NIC không hợp lệ trước khi Start; và báo rõ khi pipeline nền
+  (`config.yaml` / `sniff-producer`) chưa kịp đồng bộ theo NIC mới.
+- `/api/capture/start` trả lỗi kèm danh sách NIC khả dụng
+  (`Interface 'x' not found. Available: ens33`) thay vì chỉ "not found".
+- **`core/native_writer.py` — bộ ghi PCAP bằng chứng (dumpcap) không khởi động
+  được.** Lệnh sinh ra dùng `--print`, option **không tồn tại** trong
+  Wireshark/dumpcap 4.x → dumpcap in usage rồi thoát ngay, không tạo file. Đã bỏ
+  `--print` và đổi `-n` (pcapng) sang `-P` (pcap) cho khớp mục đích "pcap ground
+  truth". Thống kê `received/dropped` chốt ở dòng tổng kết khi dumpcap dừng
+  (dumpcap 4.2 không ghép được `-S` với ring buffer `-b`).
+
+### Deployment notes
+- `dumpcap` hạ bỏ `CAP_DAC_OVERRIDE` sau khi mở NIC, nên thư mục bằng chứng phải
+  cho uid 0 ghi được: `chown root:tu <base_dir>` + `chmod 775`, và parent cần
+  `o+x` (nếu không dumpcap báo `Permission denied` dù chạy bằng root).
+
 ## [v2.0.0] - 2026-07-24
 
 Bản phát hành lớn đầu tiên kể từ `v1.1.0` (2026-07-06) — gom **53 commit**. Gọi

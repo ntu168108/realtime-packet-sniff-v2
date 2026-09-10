@@ -690,7 +690,19 @@ def api_interfaces(user=Depends(require_user)):
 @app.post("/api/capture/start")
 def api_start(body: StartBody, user=Depends(require_user)):
     if not validate_interface(body.interface):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Interface '{body.interface}' not found")
+        # List what actually exists so a stale saved NIC (e.g. from another
+        # machine) is easy to diagnose instead of a bare "not found".
+        avail: list = []
+        if get_interfaces is not None:
+            try:
+                avail = list(get_interfaces() or [])
+            except Exception:  # noqa: BLE001
+                avail = []
+        suffix = f" Available: {', '.join(avail)}" if avail else ""
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Interface '{body.interface}' not found.{suffix}",
+        )
     eng = getattr(app.state, "engine", None)
     if eng and getattr(eng, "is_running", False):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Capture already running")

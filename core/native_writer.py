@@ -35,8 +35,11 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 # dumpcap in ra stderr dòng kiểu: "Packets received/dropped on interface 'ens19':
-# 126669/0 (pcap:0/dumpcap:0/flushed:0/ps_ifdrop:0)" khi kết thúc, và cập nhật
-# định kỳ nếu bật -M. Ta parse cặp received/dropped.
+# 126669/0 (pcap:0/dumpcap:0/flushed:0/ps_ifdrop:0)" khi kết thúc (lúc nhận SIGINT).
+# Ta parse cặp received/dropped từ dòng tổng kết đó.
+# LƯU Ý (Wireshark/dumpcap 4.x): KHÔNG có option "--print"; còn "-S" (in thống kê
+# mỗi giây) lại xung đột với ring buffer "-b" ("Ring buffer requested, but a
+# capture isn't being done."). Vì vậy thống kê chỉ chốt được ở lần dừng.
 _STATS_RE = re.compile(r"received/dropped[^:]*:\s*(\d+)/(\d+)", re.IGNORECASE)
 
 
@@ -85,10 +88,9 @@ class DumpcapWriter:
             "-i", self.interface,
             "-B", str(self.buffer_mb),          # kernel capture buffer (MiB) — mấu chốt chống drop
             "-w", out_pattern,
-            "-n",                               # ring buffer (multiple files) thay vì 1 file
-            "-b", f"duration:{self.ring_seconds}",
+            "-P",                               # pcap cổ điển (ring do -b bật, KHÔNG cần -n)
+            "-b", f"duration:{self.ring_seconds}",  # xoay file theo thời gian (bật ring buffer)
             "-s", str(self.snaplen),            # 0 = full snaplen
-            "--print",                          # in thống kê định kỳ ra stderr
         ]
         if self.ring_filesize_kb:
             cmd += ["-b", f"filesize:{self.ring_filesize_kb}"]
